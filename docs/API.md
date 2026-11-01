@@ -31,6 +31,7 @@ Base URL: the backend origin. Versioned routes live under `/api/v1`.
 | 401    | `INVALID_TOKEN`            | Access token is malformed, forged, or no longer valid    |
 | 401    | `INVALID_CREDENTIALS`      | Wrong email or password (the same for both)              |
 | 401    | `INVALID_REFRESH_TOKEN`    | Refresh cookie missing, expired, or revoked              |
+| 403    | `FORBIDDEN`                | Your role is not allowed to do this                      |
 | 403    | `ORIGIN_NOT_ALLOWED`       | Cookie-authenticated request from an unlisted origin     |
 | 404    | `NOT_FOUND`                | Unknown route                                            |
 | 409    | `EMAIL_IN_USE`             | An account with this email already exists                |
@@ -90,6 +91,25 @@ All require a Bearer token.
 | GET    | `/api/v1/users/me`          | Current user and workspace                                                                            |
 | PATCH  | `/api/v1/users/me`          | Update the profile. Body: `{ "name" }`. Other fields are ignored                                      |
 | POST   | `/api/v1/users/me/password` | Body: `{ "currentPassword", "newPassword" }`. Signs out all other devices and returns a fresh session |
+
+## Workspace
+
+All require a Bearer token. The workspace is always the caller's own, taken from the authenticated user; there is no way to address another workspace, and ids from other workspaces are reported as `404`.
+
+Roles are ordered `member` < `admin` < `owner`. The role is read from the database on each request, so a demotion applies immediately.
+
+| Method | Path                                | Minimum role | Description                                                    |
+| ------ | ----------------------------------- | ------------ | -------------------------------------------------------------- |
+| GET    | `/api/v1/workspace`                 | member       | The workspace, the caller's role and the member count          |
+| PATCH  | `/api/v1/workspace`                 | admin        | Rename the workspace. Body: `{ "name" }` (2 to 100 characters) |
+| GET    | `/api/v1/workspace/members`         | member       | Everyone in the workspace, oldest first, including deactivated |
+| GET    | `/api/v1/workspace/members/:userId` | member       | One member; `404` if they belong to a different workspace      |
+
+`GET /api/v1/workspace` returns `{ "workspace": { "id", "name", "createdAt" }, "memberCount": 1, "role": "owner" }`.
+
+A member looks like `{ "id", "name", "email", "role", "isActive", "createdAt", "lastLoginAt" }`. Password data is never included.
+
+Inviting teammates is not built yet, so a workspace has only its owner for now.
 
 ## Health
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,9 +6,11 @@ import App from './App.jsx';
 import AuthProvider from './context/AuthProvider.jsx';
 import * as authService from './services/auth.js';
 import { fetchHealth } from './services/health.js';
+import * as workspaceService from './services/workspace.js';
 
 vi.mock('./services/auth.js');
 vi.mock('./services/health.js');
+vi.mock('./services/workspace.js');
 
 const session = {
   user: {
@@ -273,5 +275,136 @@ describe('profile page', () => {
 
     expect(authService.logoutAllDevices).toHaveBeenCalled();
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+  });
+});
+
+describe('settings page', () => {
+  const members = [
+    {
+      id: 'u1',
+      name: 'Asha Rao',
+      email: 'asha@example.com',
+      role: 'owner',
+      isActive: true,
+      lastLoginAt: '2026-11-01T10:00:00.000Z',
+    },
+    {
+      id: 'u2',
+      name: 'Ben Carter',
+      email: 'ben@example.com',
+      role: 'member',
+      isActive: true,
+      lastLoginAt: null,
+    },
+    {
+      id: 'u3',
+      name: 'Dana Lee',
+      email: 'dana@example.com',
+      role: 'admin',
+      isActive: false,
+      lastLoginAt: null,
+    },
+  ];
+
+  const signInAs = (role) =>
+    authService.restoreSession.mockResolvedValue({
+      ...session,
+      user: { ...session.user, role },
+    });
+
+  beforeEach(() => {
+    workspaceService.fetchMembers.mockResolvedValue(members);
+  });
+
+  it('lets an owner rename the workspace', async () => {
+    signInAs('owner');
+    workspaceService.updateWorkspace.mockResolvedValue({ id: 'w1', name: 'Rao Properties' });
+    const user = userEvent.setup();
+    renderAt('/settings');
+
+    const name = await screen.findByLabelText('Workspace name');
+    expect(name).toHaveValue('Rao Realty');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+    await user.clear(name);
+    await user.type(name, 'Rao Properties');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(workspaceService.updateWorkspace).toHaveBeenCalledWith({ name: 'Rao Properties' });
+    expect(await screen.findByText('Workspace updated.')).toBeInTheDocument();
+    expect(screen.getByText('Rao Properties', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('lets an admin rename the workspace too', async () => {
+    signInAs('admin');
+    renderAt('/settings');
+
+    expect(await screen.findByLabelText('Workspace name')).toBeEnabled();
+  });
+
+  it('shows the workspace name read-only to plain members', async () => {
+    signInAs('member');
+    renderAt('/settings');
+
+    expect(await screen.findByLabelText('Workspace name')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Only owners and admins can change/)).toBeInTheDocument();
+  });
+
+  it('shows server validation errors under the name field', async () => {
+    signInAs('owner');
+    workspaceService.updateWorkspace.mockRejectedValue(
+      apiError(400, {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [{ path: 'name', message: 'Business name must be at least 2 characters' }],
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/settings');
+
+    const name = await screen.findByLabelText('Workspace name');
+    await user.clear(name);
+    await user.type(name, 'A');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(
+      await screen.findByText('Business name must be at least 2 characters'),
+    ).toBeInTheDocument();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('lists the team with roles, a marker for the current user and deactivated accounts', async () => {
+    signInAs('owner');
+    renderAt('/settings');
+
+    const list = await screen.findByRole('list', { name: 'Team members' });
+    const rows = within(list).getAllByRole('listitem');
+
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('Asha Rao');
+    expect(rows[0]).toHaveTextContent('(you)');
+    expect(rows[0]).toHaveTextContent('owner');
+    expect(rows[1]).toHaveTextContent('ben@example.com');
+    expect(rows[1]).not.toHaveTextContent('(you)');
+    expect(rows[2]).toHaveTextContent('Deactivated');
+  });
+
+  it('reports a failure to load the team and lets the user retry', async () => {
+    signInAs('owner');
+    workspaceService.fetchMembers
+      .mockRejectedValueOnce(
+        apiError(500, { code: 'INTERNAL_ERROR', message: 'Something went wrong' }),
+      )
+      .mockResolvedValueOnce(members);
+    const user = userEvent.setup();
+    renderAt('/settings');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('list', { name: 'Team members' })).toBeInTheDocument();
+    expect(workspaceService.fetchMembers).toHaveBeenCalledTimes(2);
   });
 });

@@ -10,6 +10,18 @@ export function toPublicUser(user) {
   };
 }
 
+export function toPublicMember(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt ?? null,
+  };
+}
+
 export function toPublicWorkspace(workspace) {
   return {
     id: workspace.id,

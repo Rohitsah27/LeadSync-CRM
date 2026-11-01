@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { onSessionExpired } from '../services/api.js';
 import * as authService from '../services/auth.js';
+import * as workspaceService from '../services/workspace.js';
 import { AuthContext } from './authContext.js';
 
 const SIGNED_OUT = { status: 'unauthenticated', user: null, workspace: null };
@@ -51,6 +52,10 @@ export default function AuthProvider({ children }) {
       updateProfile: async (values) => {
         const user = await authService.updateProfile(values);
         setState((current) => ({ ...current, user }));
+      },
+      renameWorkspace: async (values) => {
+        const workspace = await workspaceService.updateWorkspace(values);
+        setState((current) => ({ ...current, workspace }));
       },
     }),
     [state, startSession, endSession],

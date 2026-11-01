@@ -20,8 +20,15 @@ server/   Express 5 API (ESM)
 ## Multi-tenancy
 
 - One shared database. Every tenant document carries `workspaceId`, and every index on tenant data starts with `workspaceId`.
-- All queries go through a workspace-scoped helper so a missing filter cannot leak another tenant's data.
-- A user belongs to one workspace with a role (owner, admin, member).
+- A user belongs to one workspace with a role. Roles rank `member` < `admin` < `owner`, and `requireRole('admin')` allows that role and above. The role is read from the database on every request.
+- **Isolation is enforced in code, not by convention.** Tenant models use the `tenantScope` Mongoose plugin (`server/models/plugins/tenantScope.js`):
+  - Every find, update, delete and count must filter on a single `workspaceId`, and every aggregation must start with a `$match` on it. Anything else throws a `TenantScopeError`. Filters like `$ne`, `$in`, `$exists` or a `workspaceId` buried inside `$or` do not count.
+  - A document can never be moved to another workspace through an update.
+  - `Model.inWorkspace(id)` is the normal way in: it returns the usual query methods with the scope built in, overrides any caller-supplied `workspaceId`, and stamps `workspaceId` on `create`.
+  - `.unscoped()` is the explicit opt-out for lookups made before a workspace is known (signing in by email, resolving a token's user). It is greppable, so every cross-tenant read is easy to review.
+  - Not covered: `bulkWrite` and raw collection access skip Mongoose middleware, so avoid them on tenant models.
+  - New tenant models (`Lead`, `FacebookPage`, and so on) just add `schema.plugin(tenantScope)`.
+- The workspace for a request comes from the authenticated user (`req.workspaceId`), never from the body, query string or headers. Ids from another workspace return `404`, not `403`, so they cannot be probed.
 - An active Facebook Page ID is unique across the whole system: one Page can feed only one workspace at a time. Webhook routing is `page_id` to workspace, so this prevents cross-tenant lead delivery.
 
 ## Data model
@@ -54,7 +61,7 @@ server/   Express 5 API (ESM)
 - **CSRF:** `refresh` and `logout` reject requests whose `Origin` is not in `FRONTEND_URL`. The cookie is `SameSite=Lax` in development and `SameSite=None; Secure` in production, because the Render frontend and API sit on different sites. Phase 10 should revisit this: a shared custom domain or a same-origin proxy would allow `Lax`.
 - **Passwords:** bcrypt (cost 12; at least 10 is enforced in production), 10 to 72 bytes. Sign-in compares against a decoy hash when the email is unknown and returns one error for both failure modes. Registration does reveal whether an email is taken (`409`); this is limited by rate limiting and can be revisited with email verification.
 - **Password change:** revokes every refresh token, rejects access tokens issued before the change, and starts a fresh session for the device that made the change.
-- **Tenancy boundary:** registering creates a `Workspace` and its owner. `req.workspaceId` is set from the authenticated user and never from request input. Phase 3 adds the workspace-scoped query helper, role checks, and cross-tenant isolation tests.
+- **Tenancy boundary:** registering creates a `Workspace` and its owner. `req.workspaceId` is set from the authenticated user and never from request input. See Multi-tenancy for how queries are scoped. Teammate invitations are not built yet, so every workspace currently has only its owner.
 
 ## Facebook connection flow (Phase 4 onwards)
 

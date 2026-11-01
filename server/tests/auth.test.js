@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+﻿import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -73,7 +73,9 @@ describe('POST /auth/register', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|correct-horse/);
     expect(res.body.refreshToken).toBeUndefined();
 
-    const stored = await User.findOne({ email: validUser.email }).select('+passwordHash');
+    const stored = await User.findOne({ email: validUser.email })
+      .select('+passwordHash')
+      .unscoped();
     expect(stored.passwordHash).toMatch(/^\$2[aby]\$/);
     expect(stored.passwordHash).not.toContain(validUser.password);
   });
@@ -111,7 +113,7 @@ describe('POST /auth/register', () => {
     const results = await Promise.all([register(), register()]);
 
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
-    expect(await User.countDocuments()).toBe(1);
+    expect(await User.countDocuments().unscoped()).toBe(1);
     expect(await Workspace.countDocuments()).toBe(1);
   });
 
@@ -135,7 +137,7 @@ describe('POST /auth/register', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.details.map((d) => d.path)).toContain(field);
-    expect(await User.countDocuments()).toBe(0);
+    expect(await User.countDocuments().unscoped()).toBe(0);
   });
 
   it('rejects a request with no body', async () => {
@@ -159,7 +161,7 @@ describe('POST /auth/login', () => {
     expect(typeof res.body.accessToken).toBe('string');
     expect(refreshCookie(res)).toBeTruthy();
 
-    const user = await User.findOne({ email: validUser.email });
+    const user = await User.findOne({ email: validUser.email }).unscoped();
     expect(user.lastLoginAt).toBeInstanceOf(Date);
   });
 
@@ -179,7 +181,7 @@ describe('POST /auth/login', () => {
   });
 
   it('refuses deactivated accounts', async () => {
-    await User.updateOne({ email: validUser.email }, { isActive: false });
+    await User.updateOne({ email: validUser.email }, { isActive: false }).unscoped();
 
     expect((await login()).status).toBe(401);
   });
@@ -252,7 +254,7 @@ describe('access token authentication', () => {
   });
 
   it('stops honoring tokens once the account is deactivated', async () => {
-    await User.updateOne({ _id: user.id }, { isActive: false });
+    await User.updateOne({ _id: user.id }, { isActive: false }).unscoped();
     const res = await request(app).get(`${API}/users/me`).set(bearer(accessToken));
 
     expect(res.status).toBe(401);
@@ -320,7 +322,7 @@ describe('POST /auth/refresh', () => {
 
   it('refuses to refresh for a deactivated account', async () => {
     const token = refreshCookie(await register());
-    await User.updateOne({ email: validUser.email }, { isActive: false });
+    await User.updateOne({ email: validUser.email }, { isActive: false }).unscoped();
 
     expect((await refresh(token)).status).toBe(401);
   });

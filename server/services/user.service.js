@@ -10,22 +10,27 @@ export async function getProfile(user) {
   return { user, workspace };
 }
 
-export async function updateProfile(userId, { name }) {
-  return User.findByIdAndUpdate(userId, { name }, { returnDocument: 'after', runValidators: true });
+export function updateProfile(user, { name }) {
+  return User.inWorkspace(user.workspaceId)
+    .findOneAndUpdate({ _id: user._id }, { name }, { returnDocument: 'after', runValidators: true })
+    .orFail();
 }
 
 /** Changes the password, signs out every device, and starts a fresh session for this one. */
-export async function changePassword(userId, { currentPassword, newPassword }, meta) {
-  const user = await User.findById(userId).select('+passwordHash');
+export async function changePassword(user, { currentPassword, newPassword }, meta) {
+  const account = await User.inWorkspace(user.workspaceId)
+    .findById(user._id)
+    .select('+passwordHash')
+    .orFail();
 
-  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+  if (!(await verifyPassword(currentPassword, account.passwordHash))) {
     throw new AppError(400, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect');
   }
 
-  user.passwordHash = await hashPassword(newPassword);
-  user.passwordChangedAt = new Date();
-  await user.save();
-  await revokeAllUserTokens(user._id);
+  account.passwordHash = await hashPassword(newPassword);
+  account.passwordChangedAt = new Date();
+  await account.save();
+  await revokeAllUserTokens(account._id);
 
-  return startSession(user, meta);
+  return startSession(account, meta);
 }

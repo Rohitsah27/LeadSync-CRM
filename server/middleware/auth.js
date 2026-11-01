@@ -16,7 +16,8 @@ export async function requireAuth(req, _res, next) {
   const claims = verifyAccessToken(match[1]);
   if (!mongoose.isValidObjectId(claims.sub)) throw invalidToken();
 
-  const user = await User.findById(claims.sub);
+  // The token identifies the user; the workspace is read from that user, never from the request.
+  const user = await User.findById(claims.sub).unscoped();
   if (!user?.isActive) throw invalidToken();
 
   if (user.passwordChangedAt && claims.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {

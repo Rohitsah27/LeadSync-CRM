@@ -24,13 +24,15 @@ export const personNameField = z
   .min(2, 'Name must be at least 2 characters')
   .max(80, 'Name must be at most 80 characters');
 
+export const businessNameField = z
+  .string({ error: 'Business name is required' })
+  .trim()
+  .min(2, 'Business name must be at least 2 characters')
+  .max(100, 'Business name must be at most 100 characters');
+
 export const registerSchema = z.object({
   name: personNameField,
-  businessName: z
-    .string({ error: 'Business name is required' })
-    .trim()
-    .min(2, 'Business name must be at least 2 characters')
-    .max(100, 'Business name must be at most 100 characters'),
+  businessName: businessNameField,
   email: emailField,
   password: passwordField,
 });

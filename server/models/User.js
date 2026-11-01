@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
+import { tenantScope } from './plugins/tenantScope.js';
 
-export const USER_ROLES = ['owner', 'admin', 'member'];
+// Ordered from least to most privileged; a role's index is its rank.
+export const USER_ROLES = ['member', 'admin', 'owner'];
 
 const userSchema = new mongoose.Schema(
   {
@@ -27,5 +29,7 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+userSchema.plugin(tenantScope);
 
 export const User = mongoose.model('User', userSchema);

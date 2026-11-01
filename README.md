@@ -8,7 +8,7 @@ Multi-tenant SaaS that lets businesses connect their own Facebook Pages through 
 | ----- | -------------------------------------- | ----------- |
 | 1     | Project setup and architecture         | Done        |
 | 2     | MongoDB connection and authentication  | Done        |
-| 3     | Workspace and multi-tenant system      | Not started |
+| 3     | Workspace and multi-tenant system      | Done        |
 | 4     | Meta OAuth integration                 | Not started |
 | 5     | Facebook Pages integration             | Not started |
 | 6     | Lead forms and lead retrieval          | Not started |

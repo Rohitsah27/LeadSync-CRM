@@ -92,7 +92,7 @@ export async function rotateRefreshToken(token, meta) {
     throw sessionExpired();
   }
 
-  const user = await User.findById(current.userId);
+  const user = await User.findById(current.userId).unscoped();
   if (!user?.isActive) {
     await revokeTokenFamily(current.familyId);
     throw sessionExpired();

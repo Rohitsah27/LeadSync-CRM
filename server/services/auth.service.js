@@ -21,8 +21,9 @@ export async function startSession(user, meta) {
   return { user, workspace, accessToken: signAccessToken(user.id), refresh };
 }
 
+// Registration and sign-in find users by email before any workspace is known, hence .unscoped().
 export async function registerUser({ name, businessName, email, password }, meta) {
-  if (await User.exists({ email })) throw emailInUse();
+  if (await User.exists({ email }).unscoped()) throw emailInUse();
 
   // The workspace and its owner reference each other, so the user id is chosen up front.
   const userId = new mongoose.Types.ObjectId();
@@ -47,7 +48,7 @@ export async function registerUser({ name, businessName, email, password }, meta
 }
 
 export async function loginUser({ email, password }, meta) {
-  const user = await User.findOne({ email }).select('+passwordHash');
+  const user = await User.findOne({ email }).select('+passwordHash').unscoped();
   const passwordMatches = await verifyPassword(password, user?.passwordHash);
 
   if (!user || !passwordMatches || !user.isActive) {
@@ -55,7 +56,10 @@ export async function loginUser({ email, password }, meta) {
   }
 
   user.lastLoginAt = new Date();
-  await User.updateOne({ _id: user._id }, { lastLoginAt: user.lastLoginAt });
+  await User.inWorkspace(user.workspaceId).updateOne(
+    { _id: user._id },
+    { lastLoginAt: user.lastLoginAt },
+  );
 
   return startSession(user, meta);
 }

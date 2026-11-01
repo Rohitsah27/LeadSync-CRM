@@ -8,10 +8,10 @@ export async function getMe(req, res) {
 }
 
 export async function updateMe(req, res) {
-  const user = await updateProfile(req.user._id, req.body);
+  const user = await updateProfile(req.user, req.body);
   res.json({ user: toPublicUser(user) });
 }
 
 export async function updateMyPassword(req, res) {
-  sendSession(res, await changePassword(req.user._id, req.body, requestMeta(req)));
+  sendSession(res, await changePassword(req.user, req.body, requestMeta(req)));
 }
