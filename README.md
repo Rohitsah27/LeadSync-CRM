@@ -1,0 +1,69 @@
+# LeadSync CRM
+
+Multi-tenant SaaS that lets businesses connect their own Facebook Pages through Meta OAuth, pull in Facebook Lead Ads leads (manually and through webhooks), and manage them in a CRM dashboard. Every record is isolated by workspace.
+
+## Status
+
+| Phase | Scope                                  | Status      |
+| ----- | -------------------------------------- | ----------- |
+| 1     | Project setup and architecture         | Done        |
+| 2     | MongoDB connection and authentication  | Not started |
+| 3     | Workspace and multi-tenant system      | Not started |
+| 4     | Meta OAuth integration                 | Not started |
+| 5     | Facebook Pages integration             | Not started |
+| 6     | Lead forms and lead retrieval          | Not started |
+| 7     | Webhooks and automatic synchronization | Not started |
+| 8     | CRM dashboard and lead management      | Not started |
+| 9     | Testing and security                   | Not started |
+| 10    | Render deployment                      | Not started |
+
+## Stack
+
+- **Client:** React, Vite, Tailwind CSS, React Router, Axios
+- **Server:** Node.js, Express 5, Mongoose (Phase 2), JWT, Meta Graph API
+- **Database:** MongoDB Atlas
+- **Hosting:** Render (static site + web service)
+- **Tests:** Vitest, Supertest, Testing Library
+
+## Getting started
+
+Requires Node.js 22.22 or newer (`.node-version` pins 24.15.0).
+
+```bash
+npm install
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+npm run dev
+```
+
+- API: the `PORT` in `server/.env` (health check at `/health`)
+- Web app: the Vite dev server URL printed in the terminal
+
+Real credentials belong only in `server/.env` (or Render's environment settings). `.env` files are gitignored; only `.env.example` files are committed.
+
+## Scripts
+
+| Command          | What it does                          |
+| ---------------- | ------------------------------------- |
+| `npm run dev`    | Runs the API and the web app together |
+| `npm test`       | Runs server and client tests          |
+| `npm run lint`   | Lints both workspaces                 |
+| `npm run build`  | Builds the client for production      |
+| `npm start`      | Starts the API (production mode)      |
+| `npm run format` | Formats the repo with Prettier        |
+
+## Project structure
+
+```
+client/   React single-page app (components, pages, layouts, context, hooks, services, utils)
+server/   Express API (config, controllers, middleware, models, routes, services, webhooks, utils)
+docs/     Architecture, Meta setup, API reference, App Review and data handling notes
+```
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Meta app setup](docs/META_SETUP.md)
+- [API reference](docs/API.md)
+- [Meta App Review preparation](docs/APP_REVIEW.md)
+- [Data handling](docs/DATA_HANDLING.md)
