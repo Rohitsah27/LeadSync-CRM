@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { FacebookConnection } from '../models/FacebookConnection.js';
+import { FacebookPage } from '../models/FacebookPage.js';
 import { AppError } from '../utils/AppError.js';
 import { logger } from '../utils/logger.js';
 import { debugToken, MetaApiError, revokePermissions } from './meta/graphClient.js';
@@ -11,11 +12,21 @@ const SUBCODE_APP_NOT_AUTHORIZED = 458;
 
 const notFound = () => new AppError(404, 'NOT_FOUND', 'Facebook connection not found');
 
+/** Page tokens come from the user's token, so they die with it: mark the Page and drop the token. */
+const pagesLostConnection = () => ({
+  $set: {
+    status: 'invalid',
+    statusReason: 'The Facebook connection needs to be reconnected',
+    lastVerifiedAt: new Date(),
+  },
+  $unset: { pageTokenCipher: '' },
+});
+
 /** Binds an encrypted token to its workspace and Facebook user, so it cannot be moved elsewhere. */
 export const tokenAad = (workspaceId, facebookUserId) =>
   `fb-user-token:${workspaceId}:${facebookUserId}`;
 
-function toApiError(err) {
+export function toApiError(err) {
   if (!(err instanceof MetaApiError)) return err;
   if (err.kind === 'rate_limit') {
     return new AppError(
@@ -109,9 +120,19 @@ export async function verifyConnection(workspaceId, connectionId) {
     throw toApiError(err);
   }
 
-  return scoped.findOneAndUpdate({ _id: connection._id }, evaluate(info, connection), {
-    returnDocument: 'after',
-  });
+  const updated = await scoped.findOneAndUpdate(
+    { _id: connection._id },
+    evaluate(info, connection),
+    { returnDocument: 'after' },
+  );
+
+  if (updated.status !== 'active') {
+    await FacebookPage.inWorkspace(workspaceId).updateMany(
+      { connectionId: connection._id },
+      pagesLostConnection(),
+    );
+  }
+  return updated;
 }
 
 /**
@@ -149,6 +170,8 @@ export async function disconnectConnection(workspaceId, connectionId) {
     }
   }
 
+  // The Pages were authorized through this account, so they go with it.
+  await FacebookPage.inWorkspace(workspaceId).deleteMany({ connectionId: connection._id });
   await scoped.deleteOne({ _id: connection._id });
 }
 
@@ -156,8 +179,10 @@ export async function disconnectConnection(workspaceId, connectionId) {
  * Meta's deauthorize callback: the user removed the app on Facebook, so every workspace that
  * connected that account loses access at once. Intentionally cross-workspace.
  */
-export function markDeauthorized(facebookUserId) {
-  return FacebookConnection.updateMany(
+export async function markDeauthorized(facebookUserId) {
+  const connections = await FacebookConnection.find({ facebookUserId }).select('_id').unscoped();
+
+  await FacebookConnection.updateMany(
     { facebookUserId },
     {
       $set: {
@@ -167,5 +192,10 @@ export function markDeauthorized(facebookUserId) {
       },
       $unset: { userTokenCipher: '' },
     },
+  ).unscoped();
+
+  await FacebookPage.updateMany(
+    { connectionId: { $in: connections.map((connection) => connection._id) } },
+    pagesLostConnection(),
   ).unscoped();
 }

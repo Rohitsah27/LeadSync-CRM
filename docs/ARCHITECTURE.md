@@ -82,10 +82,20 @@ server/   Express 5 API (ESM)
 3. Server   validates and consumes state, exchanges code (app secret stays server-side),
             exchanges for a long-lived user token, checks granted scopes with debug_token,
             stores the encrypted FacebookConnection for the workspace
-4. Server   GET /me/accounts -> FacebookPage rows; user selects Pages;
-            connecting a Page subscribes it: POST /{page}/subscribed_apps?subscribed_fields=leadgen
-5. Server   GET /{page}/leadgen_forms -> LeadForm; GET /{form}/leads (cursor paging) -> Lead (deduped)
+4. Server   (Phase 5) GET /me/accounts lists the Pages the account manages; an admin picks one;
+            the server checks its token with debug_token and stores it encrypted (FacebookPage)
+5. Server   (Phase 7) subscribe the Page: POST /{page}/subscribed_apps?subscribed_fields=leadgen
+6. Server   (Phase 6) GET /{page}/leadgen_forms -> LeadForm; GET /{form}/leads (cursor paging) -> Lead (deduped)
 ```
+
+## Facebook Pages (Phase 5)
+
+- **Available vs connected.** The Pages an account _may_ connect are read live from Facebook (`/me/accounts`, following pagination) and never stored; Facebook decides what the user is authorized to manage. Only Pages an admin chooses become `FacebookPage` records.
+- **Page tokens** come from `/me/accounts`, are validated with `debug_token` (it must be valid and issued to this app), and are stored AES-256-GCM encrypted, bound to the workspace and Page. They are never selected by default or returned.
+- **One Page, one workspace.** A unique index on `pageId` means a Page can feed only one workspace, so a webhook event can be routed by Page id alone without crossing tenants. A live claim cannot be taken over. A dead claim (token gone) is released to whoever proves access with a live token.
+- **Dies with its connection.** A Page token is derived from the user's token, so it is discarded whenever the connection expires, is revoked, is found dead, or is deauthorized on Facebook, and Pages are deleted when the connection is disconnected. The Page record stays as `invalid` so the UI can explain it.
+- **Restored on reconnect.** When a connection is renewed, its invalid Pages get fresh tokens automatically, if the account still manages them. A failure here never fails the login.
+- **Webhook subscription is Phase 7.** Disconnecting a Page will then also unsubscribe it.
 
 ## Webhook flow (Phase 7)
 

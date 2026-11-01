@@ -5,6 +5,7 @@ import { getErrorMessage } from '../../utils/errors.js';
 import { daysUntil, formatDate } from '../../utils/format.js';
 import Alert from '../ui/Alert.jsx';
 import Button from '../ui/Button.jsx';
+import RemovalConfirm from './RemovalConfirm.jsx';
 
 const STATUS = {
   active: { label: 'Connected', style: 'bg-emerald-50 text-emerald-700' },
@@ -122,24 +123,12 @@ export default function ConnectionCard({
       )}
 
       {canManage && confirmingRemoval && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-900">
-            Disconnect {name}? Lead syncing from this account stops and its Facebook permissions are
-            revoked. Leads already in LeadSync are kept.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant="danger"
-              loading={busy === 'remove'}
-              onClick={() => run('remove', () => disconnectConnection(connection.id))}
-            >
-              Yes, disconnect
-            </Button>
-            <Button variant="secondary" onClick={() => setConfirmingRemoval(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <RemovalConfirm
+          message={`Disconnect ${name}? Its Pages are disconnected too, lead syncing from this account stops and its Facebook permissions are revoked. Leads already in LeadSync are kept.`}
+          busy={busy === 'remove'}
+          onConfirm={() => run('remove', () => disconnectConnection(connection.id))}
+          onCancel={() => setConfirmingRemoval(false)}
+        />
       )}
     </li>
   );

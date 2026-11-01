@@ -10,6 +10,13 @@ import {
   OAuthFlowError,
   startAuthorization,
 } from '../services/facebookOAuth.service.js';
+import {
+  connectPage,
+  disconnectPage,
+  listAvailablePages,
+  listPages,
+  verifyPage,
+} from '../services/facebookPage.service.js';
 import { MetaApiError } from '../services/meta/graphClient.js';
 import { REQUIRED_SCOPES } from '../services/meta/scopes.js';
 import { AppError } from '../utils/AppError.js';
@@ -18,7 +25,7 @@ import {
   readOAuthStateCookie,
   setOAuthStateCookie,
 } from '../utils/cookies.js';
-import { toPublicConnection } from '../utils/serializers.js';
+import { toAvailablePage, toPublicConnection, toPublicPage } from '../utils/serializers.js';
 import { parseSignedRequest } from '../utils/signedRequest.js';
 
 const asString = (value) => (typeof value === 'string' ? value : undefined);
@@ -76,6 +83,33 @@ export async function oauthCallback(req, res) {
     if (reason === 'internal') req.log.error({ err }, 'Facebook OAuth callback failed');
     res.redirect(connectionsPage({ facebook: 'error', reason }));
   }
+}
+
+export async function listFacebookPages(req, res) {
+  const pages = await listPages(req.workspaceId);
+  res.json({ pages: pages.map(toPublicPage) });
+}
+
+export async function listAvailableFacebookPages(req, res) {
+  const available = await listAvailablePages(req.workspaceId, req.params.connectionId);
+  res.json({
+    pages: available.map(({ page, ...flags }) => toAvailablePage(page, flags)),
+  });
+}
+
+export async function connectFacebookPage(req, res) {
+  const page = await connectPage(req.workspaceId, req.user._id, req.body);
+  res.status(201).json({ page: toPublicPage(page) });
+}
+
+export async function checkFacebookPage(req, res) {
+  const page = await verifyPage(req.workspaceId, req.params.pageId);
+  res.json({ page: toPublicPage(page) });
+}
+
+export async function disconnectFacebookPage(req, res) {
+  await disconnectPage(req.workspaceId, req.params.pageId);
+  res.status(204).end();
 }
 
 export async function checkConnection(req, res) {

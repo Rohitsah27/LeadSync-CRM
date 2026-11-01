@@ -23,6 +23,12 @@ Status: outline only. Finalized in Phase 9, and the public Privacy Policy is der
 - Disconnecting an account deletes its token and revokes the permissions on Facebook. Leads already imported stay in the workspace.
 - When a user removes the app on Facebook, Meta's deauthorize callback deletes their tokens in every workspace.
 
+## Facebook Page tokens
+
+- Each connected Page has its own access token, stored encrypted and never returned by the API.
+- It is deleted when the Page is disconnected, when its Facebook connection is disconnected, and whenever Facebook reports it expired or revoked.
+- The list of Pages a user could connect is read from Facebook on demand and is not stored.
+
 ## Retention and deletion
 
 - Disconnecting Facebook revokes and deletes the stored tokens.

@@ -10,14 +10,14 @@ Multi-tenant SaaS that lets businesses connect their own Facebook Pages through 
 | 2     | MongoDB connection and authentication  | Done        |
 | 3     | Workspace and multi-tenant system      | Done        |
 | 4     | Meta OAuth integration                 | Built       |
-| 5     | Facebook Pages integration             | Not started |
+| 5     | Facebook Pages integration             | Built       |
 | 6     | Lead forms and lead retrieval          | Not started |
 | 7     | Webhooks and automatic synchronization | Not started |
 | 8     | CRM dashboard and lead management      | Not started |
 | 9     | Testing and security                   | Not started |
 | 10    | Render deployment                      | Not started |
 
-Phase 4 is covered by tests that use a mocked Facebook Graph API. It has not yet been run against a real Meta app (see [Meta app setup](docs/META_SETUP.md)).
+Phases 4 and 5 are covered by tests that use a mocked Facebook Graph API. They have not yet been run against a real Meta app (see [Meta app setup](docs/META_SETUP.md)).
 
 ## Stack
 

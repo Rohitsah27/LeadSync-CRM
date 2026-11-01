@@ -668,3 +668,275 @@ describe('facebook connections page', () => {
     expect(await screen.findByText('Fiona Business')).toBeInTheDocument();
   });
 });
+
+describe('facebook pages page', () => {
+  const connection = (id, overrides = {}) => ({
+    id,
+    facebookUserId: `fb-${id}`,
+    name: `Account ${id}`,
+    status: 'active',
+    statusReason: null,
+    grantedScopes: [],
+    missingScopes: [],
+    tokenExpiresAt: null,
+    dataAccessExpiresAt: null,
+    lastVerifiedAt: null,
+    connectedAt: '2026-10-30T10:00:00.000Z',
+    connectedBy: 'u1',
+    ...overrides,
+  });
+  const connections = (...list) => ({ configured: true, requiredScopes: [], connections: list });
+  const page = (overrides = {}) => ({
+    id: 'p1',
+    pageId: '111',
+    connectionId: 'c1',
+    name: 'Acme Realty',
+    category: 'Real Estate',
+    pictureUrl: 'https://cdn.example/111.jpg',
+    tasks: ['ADVERTISE', 'MANAGE'],
+    status: 'active',
+    statusReason: null,
+    tokenExpiresAt: null,
+    lastVerifiedAt: '2026-11-01T10:00:00.000Z',
+    connectedAt: '2026-10-31T10:00:00.000Z',
+    connectedBy: 'u1',
+    ...overrides,
+  });
+  const available = (overrides = {}) => ({
+    pageId: '222',
+    name: 'Acme Autos',
+    category: 'Car Dealership',
+    pictureUrl: null,
+    tasks: ['ADVERTISE'],
+    canRetrieveLeads: true,
+    connected: false,
+    inUseElsewhere: false,
+    ...overrides,
+  });
+  const signInAs = (role) =>
+    authService.restoreSession.mockResolvedValue({
+      ...session,
+      user: { ...session.user, role },
+    });
+
+  beforeEach(() => {
+    signInAs('owner');
+    facebookService.fetchConnections.mockResolvedValue(connections(connection('c1')));
+    facebookService.fetchPages.mockResolvedValue([page()]);
+    facebookService.fetchAvailablePages.mockResolvedValue([available()]);
+  });
+
+  it('lists the connected Pages with their details', async () => {
+    renderAt('/pages');
+
+    const list = await screen.findByRole('list', { name: 'Connected Pages' });
+    expect(within(list).getByText('Acme Realty')).toBeInTheDocument();
+    expect(within(list).getByText(/Page ID 111/)).toHaveTextContent('Real Estate');
+    expect(within(list).getByText('Connected')).toBeInTheDocument();
+    expect(list.querySelector('img')).toHaveAttribute('src', 'https://cdn.example/111.jpg');
+  });
+
+  it('shows the Page’s initials when it has no picture', async () => {
+    facebookService.fetchPages.mockResolvedValue([page({ pictureUrl: null })]);
+    renderAt('/pages');
+
+    const list = await screen.findByRole('list', { name: 'Connected Pages' });
+    expect(within(list).getByText('AR')).toBeInTheDocument();
+    expect(list.querySelector('img')).toBeNull();
+  });
+
+  it('has an empty state that points an admin to the add section', async () => {
+    facebookService.fetchPages.mockResolvedValue([]);
+    renderAt('/pages');
+
+    expect(await screen.findByText(/No Pages connected yet\. Add one below\./)).toBeInTheDocument();
+  });
+
+  it('offers the Pages Facebook says the account manages, and connects the chosen one', async () => {
+    facebookService.connectPage.mockResolvedValue(page({ pageId: '222', name: 'Acme Autos' }));
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    const list = await screen.findByRole('list', { name: 'Available Pages' });
+    expect(within(list).getByText('Acme Autos')).toBeInTheDocument();
+    expect(facebookService.fetchAvailablePages).toHaveBeenCalledWith('c1');
+
+    await user.click(within(list).getByRole('button', { name: 'Connect Acme Autos' }));
+
+    expect(facebookService.connectPage).toHaveBeenCalledWith({
+      connectionId: 'c1',
+      pageId: '222',
+    });
+    await waitFor(() => expect(facebookService.fetchPages).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(facebookService.fetchAvailablePages).toHaveBeenCalledTimes(2));
+  });
+
+  it('labels Pages that are already connected or used elsewhere, and warns about missing access', async () => {
+    facebookService.fetchAvailablePages.mockResolvedValue([
+      available({ pageId: '1', name: 'Mine', connected: true }),
+      available({ pageId: '2', name: 'Taken', inUseElsewhere: true }),
+      available({ pageId: '3', name: 'No Access', canRetrieveLeads: false }),
+    ]);
+    renderAt('/pages');
+
+    const list = await screen.findByRole('list', { name: 'Available Pages' });
+    expect(within(list).getByText('Connected')).toBeInTheDocument();
+    expect(within(list).getByText('Used by another workspace')).toBeInTheDocument();
+    expect(within(list).getByText(/No Advertiser access/)).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: 'Connect Mine' })).not.toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: 'Connect Taken' })).not.toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'Connect No Access' })).toBeInTheDocument();
+  });
+
+  it('lets the admin pick which Facebook account to list Pages from', async () => {
+    facebookService.fetchConnections.mockResolvedValue(
+      connections(connection('c1'), connection('c2')),
+    );
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    await user.selectOptions(await screen.findByLabelText('Facebook account'), 'c2');
+
+    await waitFor(() => expect(facebookService.fetchAvailablePages).toHaveBeenCalledWith('c2'));
+  });
+
+  it('shows the reason a connection error happened and reloads the choices', async () => {
+    facebookService.connectPage.mockRejectedValue(
+      apiError(409, {
+        code: 'PAGE_IN_USE',
+        message: 'This Page is already connected to another LeadSync workspace.',
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    await user.click(await screen.findByRole('button', { name: 'Connect Acme Autos' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already connected to another');
+    await waitFor(() => expect(facebookService.fetchAvailablePages).toHaveBeenCalledTimes(2));
+  });
+
+  it('offers a retry when the available Pages cannot be loaded', async () => {
+    facebookService.fetchAvailablePages
+      .mockRejectedValueOnce(
+        apiError(502, {
+          code: 'FACEBOOK_ERROR',
+          message: 'Facebook could not complete the request.',
+        }),
+      )
+      .mockResolvedValueOnce([available()]);
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Facebook could not complete');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('list', { name: 'Available Pages' })).toBeInTheDocument();
+  });
+
+  it('explains a Page that lost its access and points to the connection', async () => {
+    facebookService.fetchPages.mockResolvedValue([
+      page({ status: 'invalid', statusReason: 'The Facebook connection needs to be reconnected' }),
+    ]);
+    renderAt('/pages');
+
+    expect(await screen.findByText('Needs reconnecting')).toBeInTheDocument();
+    expect(screen.getByText(/needs to be reconnected/)).toBeInTheDocument();
+    const link = screen.getAllByRole('link', { name: 'Connections page' })[0];
+    expect(link).toHaveAttribute('href', '/connections');
+  });
+
+  it('warns when the user lacks Advertiser access on a connected Page', async () => {
+    facebookService.fetchPages.mockResolvedValue([page({ tasks: ['MANAGE'] })]);
+    renderAt('/pages');
+
+    expect(await screen.findByText(/does not have Advertiser access/)).toBeInTheDocument();
+  });
+
+  it('re-checks a Page and refreshes the list', async () => {
+    facebookService.recheckPage.mockResolvedValue(page());
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    await user.click(await screen.findByRole('button', { name: 'Re-check' }));
+
+    expect(facebookService.recheckPage).toHaveBeenCalledWith('111');
+    await waitFor(() => expect(facebookService.fetchPages).toHaveBeenCalledTimes(2));
+  });
+
+  it('asks before disconnecting a Page, then removes it', async () => {
+    facebookService.disconnectPage.mockResolvedValue();
+    facebookService.fetchPages.mockResolvedValueOnce([page()]).mockResolvedValueOnce([]);
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    await user.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(screen.getByText(/Disconnect Acme Realty\?/)).toBeInTheDocument();
+    expect(facebookService.disconnectPage).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Yes, disconnect' }));
+
+    expect(facebookService.disconnectPage).toHaveBeenCalledWith('111');
+    expect(await screen.findByText(/No Pages connected yet/)).toBeInTheDocument();
+  });
+
+  it('is read-only for plain members and never asks Facebook for Pages', async () => {
+    signInAs('member');
+    renderAt('/pages');
+
+    expect(await screen.findByText('Acme Realty')).toBeInTheDocument();
+    for (const name of ['Re-check', 'Disconnect']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('Add a Page')).not.toBeInTheDocument();
+    expect(facebookService.fetchAvailablePages).not.toHaveBeenCalled();
+  });
+
+  it('asks for a Facebook account first when none is connected', async () => {
+    facebookService.fetchConnections.mockResolvedValue(connections());
+    renderAt('/pages');
+
+    expect(await screen.findByText(/Connect a Facebook account first/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Connections page' })).toHaveAttribute(
+      'href',
+      '/connections',
+    );
+    expect(facebookService.fetchAvailablePages).not.toHaveBeenCalled();
+  });
+
+  it('asks the admin to reconnect when no Facebook account is usable', async () => {
+    facebookService.fetchConnections.mockResolvedValue(
+      connections(connection('c1', { status: 'expired' })),
+    );
+    renderAt('/pages');
+
+    expect(await screen.findByText(/connection needs attention/)).toBeInTheDocument();
+    expect(facebookService.fetchAvailablePages).not.toHaveBeenCalled();
+  });
+
+  it('says so when Facebook is not configured on the server', async () => {
+    facebookService.fetchConnections.mockResolvedValue({
+      configured: false,
+      requiredScopes: [],
+      connections: [],
+    });
+    renderAt('/pages');
+
+    expect(await screen.findByText(/not configured on this server yet/)).toBeInTheDocument();
+  });
+
+  it('offers a retry when the connected Pages cannot be loaded', async () => {
+    facebookService.fetchPages
+      .mockRejectedValueOnce(
+        apiError(500, { code: 'INTERNAL_ERROR', message: 'Something went wrong' }),
+      )
+      .mockResolvedValueOnce([page()]);
+    const user = userEvent.setup();
+    renderAt('/pages');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    await user.click(screen.getAllByRole('button', { name: 'Try again' })[0]);
+
+    expect(await screen.findByText('Acme Realty')).toBeInTheDocument();
+  });
+});

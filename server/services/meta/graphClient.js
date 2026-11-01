@@ -155,6 +155,50 @@ export function getProfile(token) {
   return graphRequest({ path: '/me', params: { fields: 'id,name' }, token });
 }
 
+const PAGE_DETAIL_FIELDS = 'id,name,category,picture.type(large){url}';
+const MAX_PAGE_REQUESTS = 10;
+
+function normalizePage(page) {
+  return {
+    pageId: String(page.id),
+    name: page.name ?? null,
+    category: page.category ?? null,
+    pictureUrl: page.picture?.data?.url ?? null,
+    // `null` means Facebook did not say, which is different from an empty list.
+    tasks: Array.isArray(page.tasks) ? page.tasks : null,
+    accessToken: page.access_token ?? null,
+  };
+}
+
+/** Every Page the token's user manages, following Facebook's pagination. Includes Page tokens. */
+export async function listManagedPages(userToken) {
+  const pages = [];
+  let after;
+
+  for (let request = 0; request < MAX_PAGE_REQUESTS; request += 1) {
+    const body = await graphRequest({
+      path: '/me/accounts',
+      token: userToken,
+      params: { fields: `${PAGE_DETAIL_FIELDS},tasks,access_token`, limit: 100, after },
+    });
+    pages.push(...(body.data ?? []).map(normalizePage));
+
+    after = body.paging?.next ? body.paging.cursors?.after : undefined;
+    if (!after) break;
+  }
+
+  return pages;
+}
+
+export async function getPageDetails(pageId, pageToken) {
+  const body = await graphRequest({
+    path: `/${encodeURIComponent(pageId)}`,
+    token: pageToken,
+    params: { fields: PAGE_DETAIL_FIELDS },
+  });
+  return normalizePage(body);
+}
+
 export function revokePermissions(facebookUserId, token) {
   return graphRequest({
     method: 'DELETE',

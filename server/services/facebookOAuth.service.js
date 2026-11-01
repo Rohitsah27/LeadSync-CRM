@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { FacebookConnection } from '../models/FacebookConnection.js';
 import { OAUTH_STATE_TTL_SECONDS, OAuthState } from '../models/OAuthState.js';
+import { logger } from '../utils/logger.js';
 import { inspectToken, tokenAad } from './facebookConnection.service.js';
+import { restorePages } from './facebookPage.service.js';
 import {
   buildDialogUrl,
   exchangeCodeForToken,
@@ -78,7 +80,7 @@ export async function completeAuthorization({ state, cookieState, code, provider
     info.expiresAt ??
     (longLived.expires_in ? new Date(Date.now() + longLived.expires_in * 1000) : null);
 
-  return FacebookConnection.inWorkspace(record.workspaceId).findOneAndUpdate(
+  const connection = await FacebookConnection.inWorkspace(record.workspaceId).findOneAndUpdate(
     { facebookUserId: info.userId },
     {
       $set: {
@@ -95,4 +97,12 @@ export async function completeAuthorization({ state, cookieState, code, provider
     },
     { upsert: true, returnDocument: 'after' },
   );
+
+  // Renewing a connection should not mean choosing every Page again. This is a convenience, so a
+  // failure here must not undo a login that succeeded.
+  await restorePages(record.workspaceId, connection, token).catch((err) => {
+    logger.warn({ code: err.code ?? null }, 'Could not restore Pages after reconnecting');
+  });
+
+  return connection;
 }

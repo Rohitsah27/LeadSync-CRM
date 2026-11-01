@@ -13,6 +13,9 @@ export default defineConfig({
       MONGODB_URI: 'mongodb://127.0.0.1:1/leadsync_unused',
       JWT_SECRET: 'test-only-secret-that-is-at-least-32-characters-long',
       BCRYPT_ROUNDS: '4',
+      // Rate limiting has its own unit test; the integration suites make far more requests than
+      // a real client would from one address.
+      RATE_LIMIT_MAX: '100000',
       AUTH_RATE_LIMIT_MAX: '1000',
       // Fake Meta app. Tests never reach Facebook: tests/helpers/graphMock.js replaces fetch.
       META_APP_ID: '1234567890123456',
