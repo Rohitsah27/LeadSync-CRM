@@ -14,6 +14,13 @@ export default defineConfig({
       JWT_SECRET: 'test-only-secret-that-is-at-least-32-characters-long',
       BCRYPT_ROUNDS: '4',
       AUTH_RATE_LIMIT_MAX: '1000',
+      // Fake Meta app. Tests never reach Facebook: tests/helpers/graphMock.js replaces fetch.
+      META_APP_ID: '1234567890123456',
+      META_APP_SECRET: 'test-app-secret-0123456789abcdef',
+      META_LOGIN_CONFIG_ID: '9876543210',
+      META_OAUTH_REDIRECT_URI: 'https://api.leadsync.test/api/v1/facebook/oauth/callback',
+      META_GRAPH_API_VERSION: 'v25.0',
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
     },
   },
 });

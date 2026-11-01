@@ -31,7 +31,11 @@ Base URL: the backend origin. Versioned routes live under `/api/v1`.
 | 401    | `INVALID_TOKEN`            | Access token is malformed, forged, or no longer valid    |
 | 401    | `INVALID_CREDENTIALS`      | Wrong email or password (the same for both)              |
 | 401    | `INVALID_REFRESH_TOKEN`    | Refresh cookie missing, expired, or revoked              |
+| 400    | `INVALID_SIGNED_REQUEST`   | A Meta callback had a missing or invalid signature       |
 | 403    | `FORBIDDEN`                | Your role is not allowed to do this                      |
+| 429    | `FACEBOOK_RATE_LIMITED`    | Facebook is limiting requests; try again shortly         |
+| 502    | `FACEBOOK_ERROR`           | Facebook returned an error or could not be reached       |
+| 503    | `FACEBOOK_NOT_CONFIGURED`  | The server has no Meta app settings                      |
 | 403    | `ORIGIN_NOT_ALLOWED`       | Cookie-authenticated request from an unlisted origin     |
 | 404    | `NOT_FOUND`                | Unknown route                                            |
 | 409    | `EMAIL_IN_USE`             | An account with this email already exists                |
@@ -110,6 +114,48 @@ Roles are ordered `member` < `admin` < `owner`. The role is read from the databa
 A member looks like `{ "id", "name", "email", "role", "isActive", "createdAt", "lastLoginAt" }`. Password data is never included.
 
 Inviting teammates is not built yet, so a workspace has only its owner for now.
+
+## Facebook
+
+Connects a workspace to Facebook with Facebook Login for Business. Tokens are encrypted in the database and never appear in any response or URL. Connecting, re-checking and disconnecting need the `admin` role; listing is open to every member.
+
+| Method | Path                                     | Auth           | Description                                                         |
+| ------ | ---------------------------------------- | -------------- | ------------------------------------------------------------------- |
+| GET    | `/api/v1/facebook/connections`           | Bearer         | `{ configured, requiredScopes, connections }`                       |
+| POST   | `/api/v1/facebook/connect`               | Bearer, admin  | Returns `{ authorizationUrl }` and sets the `ls_oauth_state` cookie |
+| GET    | `/api/v1/facebook/oauth/callback`        | state cookie   | Where Facebook redirects the browser; always redirects to the app   |
+| POST   | `/api/v1/facebook/connections/:id/check` | Bearer, admin  | Re-validates the token with Facebook and returns the connection     |
+| DELETE | `/api/v1/facebook/connections/:id`       | Bearer, admin  | Revokes the Facebook permissions and deletes the connection; `204`  |
+| POST   | `/api/v1/facebook/deauthorize`           | signed_request | Meta's deauthorize callback; revokes the account in every workspace |
+
+A connection looks like:
+
+```json
+{
+  "id": "665f...",
+  "facebookUserId": "10001000100010",
+  "name": "Fiona Business",
+  "status": "active",
+  "statusReason": null,
+  "grantedScopes": ["pages_show_list", "leads_retrieval"],
+  "missingScopes": ["pages_read_engagement", "pages_manage_metadata", "pages_manage_ads"],
+  "tokenExpiresAt": "2026-12-31T00:00:00.000Z",
+  "dataAccessExpiresAt": "2027-01-30T00:00:00.000Z",
+  "lastVerifiedAt": "2026-11-01T10:00:00.000Z",
+  "connectedAt": "2026-11-01T09:00:00.000Z",
+  "connectedBy": "665f..."
+}
+```
+
+`status` is `active`, `expired`, `revoked` or `error`. Anything other than `active` means the stored token was discarded and the account must be reconnected. A successful login does not guarantee lead access, so `missingScopes` lists any required permission the user did not grant.
+
+### The connect flow
+
+1. The app calls `POST /facebook/connect`, which stores a single-use state (as a hash) and sets an httpOnly `ls_oauth_state` cookie holding the same value, then returns the Facebook dialog URL.
+2. The browser goes to Facebook and the user approves.
+3. Facebook redirects to `/facebook/oauth/callback?code&state`. The state must match both the cookie and the stored record, which proves the same browser started the flow.
+4. The server exchanges the code, upgrades to a long-lived token, confirms with Facebook whose token it is and which permissions it holds, and stores it encrypted.
+5. The browser is redirected to `{FRONTEND_URL}/connections?facebook=connected`, or `?facebook=error&reason=...` with one of `denied`, `state`, `exchange`, `unavailable`, `config`, `internal`.
 
 ## Health
 

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+﻿import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,11 +6,15 @@ import App from './App.jsx';
 import AuthProvider from './context/AuthProvider.jsx';
 import * as authService from './services/auth.js';
 import { fetchHealth } from './services/health.js';
+import * as facebookService from './services/facebook.js';
 import * as workspaceService from './services/workspace.js';
+import { redirectTo } from './utils/navigation.js';
 
 vi.mock('./services/auth.js');
 vi.mock('./services/health.js');
 vi.mock('./services/workspace.js');
+vi.mock('./services/facebook.js');
+vi.mock('./utils/navigation.js');
 
 const session = {
   user: {
@@ -406,5 +410,261 @@ describe('settings page', () => {
 
     expect(await screen.findByRole('list', { name: 'Team members' })).toBeInTheDocument();
     expect(workspaceService.fetchMembers).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('facebook connections page', () => {
+  const required = [
+    'pages_show_list',
+    'pages_read_engagement',
+    'pages_manage_metadata',
+    'pages_manage_ads',
+    'leads_retrieval',
+  ];
+  const connection = (overrides = {}) => ({
+    id: 'c1',
+    facebookUserId: '10001000100010',
+    name: 'Fiona Business',
+    status: 'active',
+    statusReason: null,
+    grantedScopes: required,
+    missingScopes: [],
+    tokenExpiresAt: null,
+    dataAccessExpiresAt: null,
+    lastVerifiedAt: '2026-11-01T10:00:00.000Z',
+    connectedAt: '2026-10-30T10:00:00.000Z',
+    connectedBy: 'u1',
+    ...overrides,
+  });
+  const listing = (overrides = {}) => ({
+    configured: true,
+    requiredScopes: required,
+    connections: [connection()],
+    ...overrides,
+  });
+  const signInAs = (role) =>
+    authService.restoreSession.mockResolvedValue({
+      ...session,
+      user: { ...session.user, role },
+    });
+
+  beforeEach(() => {
+    signInAs('owner');
+    facebookService.fetchConnections.mockResolvedValue(listing());
+  });
+
+  it('shows each connection with its status and the permissions it granted', async () => {
+    renderAt('/connections');
+
+    const list = await screen.findByRole('list', { name: 'Facebook connections' });
+    expect(within(list).getByText('Fiona Business')).toBeInTheDocument();
+    expect(within(list).getByText('Connected')).toBeInTheDocument();
+    expect(within(list).queryByText(/Missing permissions/)).not.toBeInTheDocument();
+
+    const permissions = within(list).getByRole('list', { name: 'Permissions' });
+    expect(within(permissions).getAllByRole('listitem')).toHaveLength(5);
+    expect(permissions).toHaveTextContent('leads_retrieval');
+    expect(within(permissions).queryByText('Missing')).not.toBeInTheDocument();
+  });
+
+  it('warns when a permission needed for leads was not granted', async () => {
+    facebookService.fetchConnections.mockResolvedValue(
+      listing({
+        connections: [
+          connection({
+            grantedScopes: required.filter((scope) => scope !== 'leads_retrieval'),
+            missingScopes: ['leads_retrieval'],
+          }),
+        ],
+      }),
+    );
+    renderAt('/connections');
+
+    expect(await screen.findByText(/Missing permissions: leads_retrieval/)).toBeInTheDocument();
+    const permissions = screen.getByRole('list', { name: 'Permissions' });
+    expect(within(permissions).getByText('Missing')).toBeInTheDocument();
+  });
+
+  it('flags a connection whose Facebook data access is about to end', async () => {
+    const soon = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    facebookService.fetchConnections.mockResolvedValue(
+      listing({ connections: [connection({ dataAccessExpiresAt: soon })] }),
+    );
+    renderAt('/connections');
+
+    expect(await screen.findByText(/data access ends in 5 days/)).toBeInTheDocument();
+  });
+
+  it('explains an expired connection and offers to reconnect', async () => {
+    facebookService.startConnect.mockResolvedValue('https://www.facebook.com/dialog/oauth?x=1');
+    facebookService.fetchConnections.mockResolvedValue(
+      listing({
+        connections: [
+          connection({
+            status: 'expired',
+            statusReason: 'Session has expired',
+            grantedScopes: [],
+            missingScopes: required,
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    expect(await screen.findByText('Expired')).toBeInTheDocument();
+    expect(screen.getByText(/Session has expired/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Re-check' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Reconnect' }));
+
+    expect(redirectTo).toHaveBeenCalledWith('https://www.facebook.com/dialog/oauth?x=1');
+  });
+
+  it('sends the browser to Facebook when Connect Facebook is clicked', async () => {
+    facebookService.startConnect.mockResolvedValue(
+      'https://www.facebook.com/v25.0/dialog/oauth?s=1',
+    );
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Connect Facebook' }));
+
+    expect(facebookService.startConnect).toHaveBeenCalledTimes(1);
+    expect(redirectTo).toHaveBeenCalledWith('https://www.facebook.com/v25.0/dialog/oauth?s=1');
+  });
+
+  it('shows an error and stays put when the connection cannot be started', async () => {
+    facebookService.startConnect.mockRejectedValue(
+      apiError(503, {
+        code: 'FACEBOOK_NOT_CONFIGURED',
+        message: 'Facebook integration is not configured',
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Connect Facebook' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('not configured');
+    expect(redirectTo).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Connect Facebook' })).toBeEnabled();
+  });
+
+  it('says so, and hides the connect button, when Facebook is not configured', async () => {
+    facebookService.fetchConnections.mockResolvedValue(
+      listing({ configured: false, connections: [] }),
+    );
+    renderAt('/connections');
+
+    expect(await screen.findByText(/not configured on this server yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect Facebook' })).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state when nothing is connected', async () => {
+    facebookService.fetchConnections.mockResolvedValue(listing({ connections: [] }));
+    renderAt('/connections');
+
+    expect(await screen.findByText('No Facebook account connected yet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect Facebook' })).toBeInTheDocument();
+  });
+
+  it('is read-only for plain members', async () => {
+    signInAs('member');
+    renderAt('/connections');
+
+    expect(await screen.findByText('Fiona Business')).toBeInTheDocument();
+    expect(screen.getByText(/Only workspace owners and admins/)).toBeInTheDocument();
+    for (const name of ['Connect Facebook', 'Re-check', 'Disconnect', 'Reconnect']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it('re-checks a connection and refreshes the list', async () => {
+    facebookService.recheckConnection.mockResolvedValue(connection());
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Re-check' }));
+
+    expect(facebookService.recheckConnection).toHaveBeenCalledWith('c1');
+    await waitFor(() => expect(facebookService.fetchConnections).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows why a re-check failed', async () => {
+    facebookService.recheckConnection.mockRejectedValue(
+      apiError(502, {
+        code: 'FACEBOOK_ERROR',
+        message: 'Facebook could not complete the request.',
+      }),
+    );
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Re-check' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Facebook could not complete');
+  });
+
+  it('asks for confirmation before disconnecting, and lets the user back out', async () => {
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(screen.getByText(/Disconnect Fiona Business\?/)).toBeInTheDocument();
+    expect(facebookService.disconnectConnection).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByText(/Disconnect Fiona Business\?/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
+  });
+
+  it('disconnects after confirmation and shows the updated list', async () => {
+    facebookService.disconnectConnection.mockResolvedValue();
+    facebookService.fetchConnections
+      .mockResolvedValueOnce(listing())
+      .mockResolvedValueOnce(listing({ connections: [] }));
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    await user.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, disconnect' }));
+
+    expect(facebookService.disconnectConnection).toHaveBeenCalledWith('c1');
+    expect(await screen.findByText('No Facebook account connected yet')).toBeInTheDocument();
+  });
+
+  it('confirms a successful connection after returning from Facebook, then clears the URL', async () => {
+    renderAt('/connections?facebook=connected');
+
+    expect(await screen.findByText('Facebook account connected.')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['denied', /access was not granted/],
+    ['state', /expired or was opened in a different browser/],
+    ['exchange', /did not accept the login/],
+    ['unavailable', /could not be reached/],
+    ['something-new', /Something went wrong while connecting/],
+  ])('explains a failed login (%s)', async (reason, message) => {
+    renderAt(`/connections?facebook=error&reason=${reason}`);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  });
+
+  it('offers a retry when the connections cannot be loaded', async () => {
+    facebookService.fetchConnections
+      .mockRejectedValueOnce(
+        apiError(500, { code: 'INTERNAL_ERROR', message: 'Something went wrong' }),
+      )
+      .mockResolvedValueOnce(listing());
+    const user = userEvent.setup();
+    renderAt('/connections');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('Fiona Business')).toBeInTheDocument();
   });
 });

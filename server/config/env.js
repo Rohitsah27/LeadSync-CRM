@@ -30,6 +30,14 @@ const mongoUri = z
     'must start with mongodb:// or mongodb+srv://',
   );
 
+function isValidKey(value) {
+  const key = Buffer.from(value, 'base64');
+  return key.length === 32 && key.toString('base64') === value;
+}
+
+const keyMessage = 'must be 32 random bytes, base64-encoded';
+const numericId = z.string().regex(/^\d+$/, 'must be numeric');
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
@@ -49,6 +57,28 @@ const schema = z.object({
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
   REFRESH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).optional(),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  META_APP_ID: numericId.optional(),
+  META_APP_SECRET: z.string().min(16, 'looks too short to be an app secret').optional(),
+  META_GRAPH_API_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/, 'must look like v25.0')
+    .default('v25.0'),
+  META_LOGIN_CONFIG_ID: numericId.optional(),
+  META_OAUTH_REDIRECT_URI: z.url('must be a valid URL').optional(),
+  TOKEN_ENCRYPTION_KEY: z.string().refine(isValidKey, keyMessage).optional(),
+  // Retired keys, comma-separated. They can still decrypt old data while it is re-encrypted.
+  TOKEN_ENCRYPTION_KEY_PREVIOUS: z
+    .string()
+    .refine(
+      (value) =>
+        value
+          .split(',')
+          .map((key) => key.trim())
+          .filter(Boolean)
+          .every(isValidKey),
+      `each key ${keyMessage}`,
+    )
+    .optional(),
 });
 
 function fail(lines) {
@@ -83,6 +113,25 @@ export function parseEnv(source = process.env) {
       'REFRESH_COOKIE_SAMESITE: "none" requires https, so it is only allowed in production',
     );
   }
+
+  // Facebook login is all-or-nothing: a half-configured integration should fail at startup,
+  // not on a user's first click. It is mandatory in production.
+  const metaSettings = {
+    META_APP_ID: data.META_APP_ID,
+    META_APP_SECRET: data.META_APP_SECRET,
+    META_LOGIN_CONFIG_ID: data.META_LOGIN_CONFIG_ID,
+    META_OAUTH_REDIRECT_URI: data.META_OAUTH_REDIRECT_URI,
+  };
+  const metaConfigured = Object.values(metaSettings).some(Boolean);
+  if (metaConfigured || isProduction) {
+    const required = { ...metaSettings, TOKEN_ENCRYPTION_KEY: data.TOKEN_ENCRYPTION_KEY };
+    for (const [name, value] of Object.entries(required)) {
+      if (!value) problems.push(`${name}: is required to enable Facebook login`);
+    }
+  }
+  if (isProduction && data.META_OAUTH_REDIRECT_URI?.startsWith('http://')) {
+    problems.push('META_OAUTH_REDIRECT_URI: must use https in production');
+  }
   if (problems.length) fail(problems);
 
   return Object.freeze({
@@ -107,6 +156,25 @@ export function parseEnv(source = process.env) {
       cookieSecure: isProduction,
       rateLimitMax: data.AUTH_RATE_LIMIT_MAX,
     }),
+    meta: metaConfigured
+      ? Object.freeze({
+          appId: data.META_APP_ID,
+          appSecret: data.META_APP_SECRET,
+          graphVersion: data.META_GRAPH_API_VERSION,
+          loginConfigId: data.META_LOGIN_CONFIG_ID,
+          redirectUri: data.META_OAUTH_REDIRECT_URI,
+        })
+      : null,
+    tokenEncryption: data.TOKEN_ENCRYPTION_KEY
+      ? Object.freeze({
+          current: Buffer.from(data.TOKEN_ENCRYPTION_KEY, 'base64'),
+          previous: (data.TOKEN_ENCRYPTION_KEY_PREVIOUS ?? '')
+            .split(',')
+            .map((key) => key.trim())
+            .filter(Boolean)
+            .map((key) => Buffer.from(key, 'base64')),
+        })
+      : null,
   });
 }
 

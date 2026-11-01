@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes.js';
+import facebookRoutes from './facebook.routes.js';
 import healthRoutes from './health.routes.js';
 import userRoutes from './user.routes.js';
 import workspaceRoutes from './workspace.routes.js';
@@ -10,5 +11,6 @@ router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/workspace', workspaceRoutes);
+router.use('/facebook', facebookRoutes);
 
 export default router;

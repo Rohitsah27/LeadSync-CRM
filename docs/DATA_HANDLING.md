@@ -16,6 +16,13 @@ Status: outline only. Finalized in Phase 9, and the public Privacy Policy is der
 - Data is isolated per workspace.
 - Raw lead payloads are stored encrypted, with a configurable retention period.
 
+## Facebook access tokens
+
+- Stored encrypted (AES-256-GCM) and only on the server. They never appear in API responses, URLs or logs.
+- A token that Facebook reports as expired or revoked is deleted immediately.
+- Disconnecting an account deletes its token and revokes the permissions on Facebook. Leads already imported stay in the workspace.
+- When a user removes the app on Facebook, Meta's deauthorize callback deletes their tokens in every workspace.
+
 ## Retention and deletion
 
 - Disconnecting Facebook revokes and deletes the stored tokens.

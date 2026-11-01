@@ -63,6 +63,17 @@ server/   Express 5 API (ESM)
 - **Password change:** revokes every refresh token, rejects access tokens issued before the change, and starts a fresh session for the device that made the change.
 - **Tenancy boundary:** registering creates a `Workspace` and its owner. `req.workspaceId` is set from the authenticated user and never from request input. See Multi-tenancy for how queries are scoped. Teammate invitations are not built yet, so every workspace currently has only its owner.
 
+## Facebook OAuth (Phase 4)
+
+- **Login product:** Facebook Login for Business. The dialog uses `config_id` instead of `scope`, and `response_type=code`, so the code is exchanged on the server and the App Secret never leaves it.
+- **State bound to the browser.** The `state` is random, stored only as a hash, single-use and valid for 10 minutes. A matching httpOnly cookie is set when the flow starts, and the callback requires both. Without the cookie, an attacker could start a flow in their own workspace and trick a victim into finishing it, attaching the victim's Facebook account to the attacker's workspace.
+- **Verified, not assumed.** After the code exchange the server asks Facebook (`debug_token`) whose token it is, which app issued it and which permissions it holds. A token for another app or user is rejected, and missing permissions are recorded so the UI can say lead access is incomplete.
+- **Tokens at rest:** long-lived tokens are encrypted with AES-256-GCM (`services/tokenCrypto.js`). Each value has its own random IV and is bound to its workspace and Facebook user, so it cannot be copied onto another record. The key ring supports rotation. Tokens are never selected by default, never logged, and never returned or put in a URL.
+- **Expiry and revocation:** connections move to `expired`, `revoked` or `error` when a check shows the token is dead, and the dead token is deleted. Facebook's deauthorize callback revokes an account in every workspace at once. Data access (about 90 days) is tracked separately from token expiry.
+- **Disconnecting** deletes the connection and revokes the Facebook permissions, unless another workspace uses the same Facebook account, because a revocation would break theirs.
+- **Graph client** (`services/meta/graphClient.js`): adds `appsecret_proof`, enforces a timeout, never logs URLs, and groups Meta's error codes into auth, permission, rate-limit and unavailable.
+- The Facebook settings are validated together at startup (all or none, mandatory in production).
+
 ## Facebook connection flow (Phase 4 onwards)
 
 ```
