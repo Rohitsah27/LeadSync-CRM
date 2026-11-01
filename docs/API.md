@@ -21,33 +21,38 @@ Base URL: the backend origin. Versioned routes live under `/api/v1`.
 }
 ```
 
-| Status | Code                       | Meaning                                                    |
-| ------ | -------------------------- | ---------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR`         | Input failed validation (see `details`)                    |
-| 400    | `INVALID_JSON`             | Body is not valid JSON                                     |
-| 400    | `INVALID_CURRENT_PASSWORD` | Current password is wrong                                  |
-| 401    | `UNAUTHENTICATED`          | No access token supplied                                   |
-| 401    | `TOKEN_EXPIRED`            | Access token expired; refresh and retry                    |
-| 401    | `INVALID_TOKEN`            | Access token is malformed, forged, or no longer valid      |
-| 401    | `INVALID_CREDENTIALS`      | Wrong email or password (the same for both)                |
-| 401    | `INVALID_REFRESH_TOKEN`    | Refresh cookie missing, expired, or revoked                |
-| 400    | `INVALID_SIGNED_REQUEST`   | A Meta callback had a missing or invalid signature         |
-| 403    | `FORBIDDEN`                | Your role is not allowed to do this                        |
-| 429    | `FACEBOOK_RATE_LIMITED`    | Facebook is limiting requests; try again shortly           |
-| 502    | `FACEBOOK_ERROR`           | Facebook returned an error or could not be reached         |
-| 503    | `FACEBOOK_NOT_CONFIGURED`  | The server has no Meta app settings                        |
-| 404    | `PAGE_NOT_FOUND`           | The Facebook account does not manage that Page             |
-| 409    | `CONNECTION_NOT_ACTIVE`    | The Facebook connection must be reconnected first          |
-| 409    | `PAGE_TOKEN_UNAVAILABLE`   | Facebook gave no access token for the Page                 |
-| 409    | `PAGE_TOKEN_INVALID`       | Facebook issued a token that is invalid or for another app |
-| 409    | `PAGE_IN_USE`              | Another workspace has already connected the Page           |
-| 403    | `ORIGIN_NOT_ALLOWED`       | Cookie-authenticated request from an unlisted origin       |
-| 404    | `NOT_FOUND`                | Unknown route                                              |
-| 409    | `EMAIL_IN_USE`             | An account with this email already exists                  |
-| 409    | `REFRESH_CONFLICT`         | Another request just rotated this session; retry shortly   |
-| 413    | `PAYLOAD_TOO_LARGE`        | Body exceeds the size limit                                |
-| 429    | `RATE_LIMITED`             | Too many requests                                          |
-| 500    | `INTERNAL_ERROR`           | Unexpected server error                                    |
+| Status | Code                          | Meaning                                                       |
+| ------ | ----------------------------- | ------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`            | Input failed validation (see `details`)                       |
+| 400    | `INVALID_JSON`                | Body is not valid JSON                                        |
+| 400    | `INVALID_CURRENT_PASSWORD`    | Current password is wrong                                     |
+| 401    | `UNAUTHENTICATED`             | No access token supplied                                      |
+| 401    | `TOKEN_EXPIRED`               | Access token expired; refresh and retry                       |
+| 401    | `INVALID_TOKEN`               | Access token is malformed, forged, or no longer valid         |
+| 401    | `INVALID_CREDENTIALS`         | Wrong email or password (the same for both)                   |
+| 401    | `INVALID_REFRESH_TOKEN`       | Refresh cookie missing, expired, or revoked                   |
+| 400    | `INVALID_SIGNED_REQUEST`      | A Meta callback had a missing or invalid signature            |
+| 403    | `FORBIDDEN`                   | Your role is not allowed to do this                           |
+| 429    | `FACEBOOK_RATE_LIMITED`       | Facebook is limiting requests; try again shortly              |
+| 502    | `FACEBOOK_ERROR`              | Facebook returned an error or could not be reached            |
+| 503    | `FACEBOOK_NOT_CONFIGURED`     | The server has no Meta app settings                           |
+| 404    | `PAGE_NOT_FOUND`              | The Facebook account does not manage that Page                |
+| 409    | `CONNECTION_NOT_ACTIVE`       | The Facebook connection must be reconnected first             |
+| 409    | `PAGE_TOKEN_UNAVAILABLE`      | Facebook gave no access token for the Page                    |
+| 409    | `PAGE_TOKEN_INVALID`          | Facebook issued a token that is invalid or for another app    |
+| 409    | `PAGE_IN_USE`                 | Another workspace has already connected the Page              |
+| 409    | `PAGE_NOT_ACTIVE`             | The Page has no working token; reconnect its Facebook account |
+| 502    | `WEBHOOK_SUBSCRIPTION_FAILED` | Facebook refused to subscribe the Page to new leads           |
+| 401    | `INVALID_SIGNATURE`           | A webhook delivery was not signed with the app secret         |
+| 400    | `INVALID_WEBHOOK`             | A webhook delivery had no usable body                         |
+| 400    | `INVALID_CHALLENGE`           | The webhook verification challenge was not acceptable         |
+| 403    | `ORIGIN_NOT_ALLOWED`          | Cookie-authenticated request from an unlisted origin          |
+| 404    | `NOT_FOUND`                   | Unknown route                                                 |
+| 409    | `EMAIL_IN_USE`                | An account with this email already exists                     |
+| 409    | `REFRESH_CONFLICT`            | Another request just rotated this session; retry shortly      |
+| 413    | `PAYLOAD_TOO_LARGE`           | Body exceeds the size limit                                   |
+| 429    | `RATE_LIMITED`                | Too many requests                                             |
+| 500    | `INTERNAL_ERROR`              | Unexpected server error                                       |
 
 ## Sessions
 
@@ -166,13 +171,14 @@ A connection looks like:
 
 Choosing which Pages feed a workspace. The list of Pages an account may connect always comes live from Facebook, so a user only sees Pages that account is authorized to manage. Only chosen Pages are stored, with their access tokens encrypted. Listing connected Pages is open to every member; everything else needs the `admin` role.
 
-| Method | Path                                     | Description                                                                  |
-| ------ | ---------------------------------------- | ---------------------------------------------------------------------------- |
-| GET    | `/api/v1/facebook/pages`                 | The workspace's connected Pages                                              |
-| GET    | `/api/v1/facebook/connections/:id/pages` | Pages the Facebook account can manage, marked `connected` / `inUseElsewhere` |
-| POST   | `/api/v1/facebook/pages`                 | Connect a Page. Body: `{ "connectionId", "pageId" }`; `201`                  |
-| POST   | `/api/v1/facebook/pages/:pageId/check`   | Re-validate the Page token and refresh its name and picture                  |
-| DELETE | `/api/v1/facebook/pages/:pageId`         | Disconnect a Page and delete its token; `204`                                |
+| Method | Path                                          | Description                                                                    |
+| ------ | --------------------------------------------- | ------------------------------------------------------------------------------ |
+| GET    | `/api/v1/facebook/pages`                      | The workspace's connected Pages                                                |
+| GET    | `/api/v1/facebook/connections/:id/pages`      | Pages the Facebook account can manage, marked `connected` / `inUseElsewhere`   |
+| POST   | `/api/v1/facebook/pages`                      | Connect a Page. Body: `{ "connectionId", "pageId" }`; `201`                    |
+| POST   | `/api/v1/facebook/pages/:pageId/check`        | Re-validate the Page token, refresh its name and picture and its webhook state |
+| POST   | `/api/v1/facebook/pages/:pageId/subscription` | Ask Facebook to send the Page's new leads to the app (retry after a refusal)   |
+| DELETE | `/api/v1/facebook/pages/:pageId`              | Disconnect a Page, unsubscribe it and delete its token; `204`                  |
 
 Identifiers: `:id` is a connection id; `:pageId` is the numeric Facebook Page id.
 
@@ -190,11 +196,19 @@ A connected Page looks like:
   "status": "active",
   "statusReason": null,
   "tokenExpiresAt": null,
+  "webhook": {
+    "subscribed": true,
+    "subscribedAt": "2026-11-01T09:00:01.000Z",
+    "error": null,
+    "lastEventAt": "2026-11-01T10:30:00.000Z"
+  },
   "lastVerifiedAt": "2026-11-01T10:00:00.000Z",
   "connectedAt": "2026-11-01T09:00:00.000Z",
   "connectedBy": "665f..."
 }
 ```
+
+`webhook.subscribed` says whether Facebook is sending this Page's new leads to the app, `error` explains a refusal, and `lastEventAt` is when the last new lead arrived. Connecting a Page subscribes it automatically and still succeeds if Facebook refuses; `POST .../subscription` retries (`502 WEBHOOK_SUBSCRIPTION_FAILED` if it is refused again, `409 PAGE_NOT_ACTIVE` if the Page has no token).
 
 An available Page adds `connected`, `inUseElsewhere` and `canRetrieveLeads` (true when the user has Advertiser access on the Page, null when Facebook did not say). It never includes a token.
 
@@ -202,7 +216,7 @@ Rules worth knowing:
 
 - **One Page, one workspace.** If another workspace has an active claim, connecting returns `409 PAGE_IN_USE` and the response never says which workspace. A claim whose token is dead is released to anyone who can prove, with a live token from Facebook, that they manage the Page.
 - **Status.** `active`, or `invalid` when the token is gone (the Facebook connection expired, was revoked or was disconnected). Invalid Pages have no stored token. Renewing the Facebook connection restores the Pages it previously held.
-- **Disconnecting a Facebook account** deletes its Pages. Webhook subscriptions are added in Phase 7.
+- **Disconnecting** a Page, or a Facebook account (which deletes its Pages), first asks Facebook to stop sending that Page's leads. If Facebook refuses, the disconnect still goes ahead.
 
 ## Lead forms and leads
 
@@ -259,6 +273,29 @@ Each sync returns one result per form: `{ formId, name, pageId, status, message,
 
 A failing form never stops the others, and the request itself still returns `200`. Syncing is safe to repeat: a lead is stored once per workspace and an existing lead is never overwritten, so a status or assignment someone changed survives. Naming a `formId` syncs that form even if bulk syncing is switched off for it.
 
+## Webhooks
+
+Facebook calls these endpoints, not the app. They are not authenticated with a user token, take no cookies, and are not rate limited; the signature is the credential. They are only available when the Facebook settings are configured (`503 FACEBOOK_NOT_CONFIGURED` otherwise).
+
+| Method | Path                    | Description                                                                    |
+| ------ | ----------------------- | ------------------------------------------------------------------------------ |
+| GET    | `/api/v1/webhooks/meta` | Verification. Query: `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge` |
+| POST   | `/api/v1/webhooks/meta` | Delivery of new-lead notifications, signed with `X-Hub-Signature-256`          |
+
+**Verification.** If `hub.verify_token` equals `META_WEBHOOK_VERIFY_TOKEN`, the challenge is echoed back as `text/plain` with `200`. Otherwise the answer is `403`. A challenge that is not a plain token (letters, digits, `_` or `-`, up to 200 characters) gets `400 INVALID_CHALLENGE` instead of being echoed.
+
+**Delivery.** The `X-Hub-Signature-256` header must be `sha256=` followed by the HMAC-SHA256 of the exact request bytes with the app secret; a missing or wrong signature gets `401 INVALID_SIGNATURE` and nothing is stored. A valid body is `{ "object": "page", "entry": [{ "id": "<page id>", "changes": [{ "field": "leadgen", "value": { "leadgen_id", "page_id", "form_id", "ad_id", "created_time" } }] }] }`. The reply is `200` with a count, sent after the events are saved and before any lead is fetched:
+
+```json
+{ "received": 1, "duplicates": 0, "unknownPages": 0 }
+```
+
+- `received` events were new and are queued. `duplicates` had already been received. `unknownPages` belong to a Page no workspace has connected and are not stored.
+- Anything that is not a well-formed lead notification (other fields, other objects, non-numeric ids) is skipped, not an error, so Facebook is never given a reason to keep retrying.
+- The event is attributed to the workspace that connected the Page. Because a Page belongs to one workspace, a notification cannot reach another tenant.
+
+**Processing.** A background worker takes the queued events one at a time, fetches the full lead from Facebook with the Page token, and stores it like a synced lead. A lead that arrives both ways, or twice, is stored once. Temporary failures (Facebook down, rate limits) are retried after 30 s, 2 min, 10 min, 30 min and 1 h; after the sixth failed attempt the event is marked `failed` with the reason. A lead from a form that has bulk syncing switched off is ignored. If Facebook rejects the Page token, the Page is marked invalid and the event fails without retrying.
+
 ## Health
 
 `GET /health` and `GET /api/v1/health`
@@ -269,4 +306,4 @@ The root path is for the Render health check and is not rate limited or logged. 
 { "status": "ok", "database": "connected", "uptime": 42, "timestamp": "2026-11-01T13:00:00.000Z" }
 ```
 
-More endpoints are documented as each phase lands: workspaces (3), Facebook OAuth (4), Pages (5), forms and leads (6), webhooks (7).
+More endpoints are documented as each phase lands. Done so far: workspaces (3), Facebook OAuth (4), Pages (5), forms and leads (6), webhooks (7). Still to come: the dashboard and lead management (8).

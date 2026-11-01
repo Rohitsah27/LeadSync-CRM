@@ -37,6 +37,12 @@ export async function recheckPage(pageId) {
   return data.page;
 }
 
+/** Asks Facebook to send this Page's new leads to the app. */
+export async function subscribePage(pageId) {
+  const { data } = await api.post(`/facebook/pages/${pageId}/subscription`);
+  return data.page;
+}
+
 export async function disconnectPage(pageId) {
   await api.delete(`/facebook/pages/${pageId}`);
 }

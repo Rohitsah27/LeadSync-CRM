@@ -15,6 +15,7 @@ const meta = {
   META_APP_SECRET: 'an-app-secret-long-enough',
   META_LOGIN_CONFIG_ID: '555666777',
   META_OAUTH_REDIRECT_URI: 'https://api.example.com/api/v1/facebook/oauth/callback',
+  META_WEBHOOK_VERIFY_TOKEN: 'a-long-enough-verify-token',
   TOKEN_ENCRYPTION_KEY: key,
 };
 
@@ -62,6 +63,7 @@ describe('parseEnv', () => {
         graphVersion: 'v26.0',
         loginConfigId: '555666777',
         redirectUri: 'https://api.example.com/api/v1/facebook/oauth/callback',
+        webhookVerifyToken: 'a-long-enough-verify-token',
       });
       expect(env.tokenEncryption.current).toEqual(Buffer.from(key, 'base64'));
       expect(env.tokenEncryption.previous).toEqual([Buffer.from(otherKey, 'base64')]);
@@ -119,6 +121,31 @@ describe('parseEnv', () => {
     ])('rejects %s', (_label, override, pattern) => {
       expect(() => parseEnv({ ...base, ...meta, ...override })).toThrow(pattern);
     });
+  });
+
+  it('requires a webhook verify token with the rest of the Facebook settings', () => {
+    const withoutToken = { ...meta };
+    delete withoutToken.META_WEBHOOK_VERIFY_TOKEN;
+
+    expect(() => parseEnv({ ...base, ...withoutToken })).toThrow(
+      /META_WEBHOOK_VERIFY_TOKEN: is required/,
+    );
+    expect(() => parseEnv({ ...base, ...meta, META_WEBHOOK_VERIFY_TOKEN: 'short' })).toThrow(
+      /META_WEBHOOK_VERIFY_TOKEN: must be at least 16 characters/,
+    );
+  });
+
+  it('sets how often the webhook worker runs, within sensible bounds', () => {
+    expect(parseEnv({ ...base }).webhook.workerIntervalMs).toBe(10_000);
+    expect(parseEnv({ ...base, WEBHOOK_WORKER_INTERVAL_MS: '2500' }).webhook.workerIntervalMs).toBe(
+      2500,
+    );
+    expect(() => parseEnv({ ...base, WEBHOOK_WORKER_INTERVAL_MS: '5' })).toThrow(
+      /WEBHOOK_WORKER_INTERVAL_MS/,
+    );
+    expect(() => parseEnv({ ...base, WEBHOOK_WORKER_INTERVAL_MS: '999999' })).toThrow(
+      /WEBHOOK_WORKER_INTERVAL_MS/,
+    );
   });
 
   it('requires the database URI and a strong JWT secret', () => {

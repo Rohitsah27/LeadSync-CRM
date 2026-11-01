@@ -336,7 +336,9 @@ describe('all leads screen', () => {
     const user = userEvent.setup();
     renderAt('/leads');
 
-    await user.selectOptions(await screen.findByLabelText('Form'), '555');
+    // The forms load separately from the leads, so wait until the option is actually there.
+    await screen.findByRole('option', { name: 'Spring Offer' });
+    await user.selectOptions(screen.getByLabelText('Form'), '555');
 
     await waitFor(() =>
       expect(leadsService.fetchLeads).toHaveBeenLastCalledWith({

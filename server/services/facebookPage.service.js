@@ -10,6 +10,12 @@ import {
   verifyConnection,
 } from './facebookConnection.service.js';
 import { getPageDetails, listManagedPages, MetaApiError } from './meta/graphClient.js';
+import {
+  refreshSubscriptionState,
+  subscribeToLeads,
+  unsubscribeQuietly,
+} from './pageSubscription.service.js';
+import { pageTokenAad } from './tokenAad.js';
 import { tokenCrypto } from './tokenCrypto.js';
 
 const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i;
@@ -29,8 +35,7 @@ const pageInUse = () =>
     'This Page is already connected to another LeadSync workspace. Disconnect it there first.',
   );
 
-/** Binds an encrypted Page token to its workspace and Page, so it cannot be moved elsewhere. */
-export const pageTokenAad = (workspaceId, pageId) => `fb-page-token:${workspaceId}:${pageId}`;
+export { pageTokenAad };
 
 /** The connection's user token, only if the connection is still usable. */
 async function loadUsableConnection(workspaceId, connectionId) {
@@ -149,8 +154,9 @@ export async function connectPage(workspaceId, userId, { connectionId, pageId })
 
   await releaseDeadClaim(workspaceId, pageId);
 
+  let saved;
   try {
-    return await FacebookPage.inWorkspace(workspaceId).findOneAndUpdate(
+    saved = await FacebookPage.inWorkspace(workspaceId).findOneAndUpdate(
       { pageId },
       {
         $set: {
@@ -173,6 +179,28 @@ export async function connectPage(workspaceId, userId, { connectionId, pageId })
     // Two workspaces connecting the same Page at the same instant: the unique index picks one.
     throw err.code === 11000 ? pageInUse() : err;
   }
+
+  // New leads should arrive on their own, but a refusal here must not undo the connection: the
+  // reason is kept on the Page and an admin can retry.
+  const { page: subscribed } = await subscribeToLeads(workspaceId, pageId, page.accessToken);
+  return subscribed ?? saved;
+}
+
+/** (Re)subscribes a connected Page to new-lead notifications, reporting why if Facebook refuses. */
+export async function subscribePageToLeads(workspaceId, pageId) {
+  const page = await loadPage(workspaceId, pageId);
+  if (!page.pageTokenCipher) {
+    throw new AppError(
+      409,
+      'PAGE_NOT_ACTIVE',
+      'This Page needs its Facebook connection renewed before it can receive leads',
+    );
+  }
+
+  const token = tokenCrypto.decrypt(page.pageTokenCipher, pageTokenAad(workspaceId, page.pageId));
+  const { page: updated, error } = await subscribeToLeads(workspaceId, page.pageId, token);
+  if (error) throw new AppError(502, 'WEBHOOK_SUBSCRIPTION_FAILED', error.message);
+  return updated;
 }
 
 async function loadPage(workspaceId, pageId) {
@@ -217,7 +245,7 @@ export async function verifyPage(workspaceId, pageId) {
   // Name and picture changes are cosmetic: failing to fetch them must not fail the check.
   const details = await getPageDetails(page.pageId, token).catch(() => null);
 
-  return FacebookPage.inWorkspace(workspaceId).findOneAndUpdate(
+  const verified = await FacebookPage.inWorkspace(workspaceId).findOneAndUpdate(
     { _id: page._id },
     {
       $set: {
@@ -232,10 +260,19 @@ export async function verifyPage(workspaceId, pageId) {
     },
     { returnDocument: 'after' },
   );
+
+  // The webhook status shown to the user should be what Facebook says, not what we last assumed.
+  return (await refreshSubscriptionState(workspaceId, page.pageId, token)) ?? verified;
 }
 
 export async function disconnectPage(workspaceId, pageId) {
   const page = await loadPage(workspaceId, pageId);
+  if (page.pageTokenCipher) {
+    await unsubscribeQuietly(
+      page.pageId,
+      tokenCrypto.decrypt(page.pageTokenCipher, pageTokenAad(workspaceId, page.pageId)),
+    );
+  }
   await FacebookPage.inWorkspace(workspaceId).deleteOne({ _id: page._id });
   // Its forms go with it. The leads they produced stay: they are the customer's CRM data.
   await LeadForm.inWorkspace(workspaceId).deleteMany({ pageId: page.pageId });
@@ -275,5 +312,6 @@ export async function restorePages(workspaceId, connection, userToken) {
         },
       },
     );
+    await subscribeToLeads(workspaceId, pageId, fresh.accessToken);
   }
 }

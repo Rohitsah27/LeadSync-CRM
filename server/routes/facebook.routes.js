@@ -11,6 +11,7 @@ import {
   listFacebookConnections,
   listFacebookPages,
   oauthCallback,
+  subscribeFacebookPage,
 } from '../controllers/facebook.controller.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/authorize.js';
@@ -62,6 +63,12 @@ router.post(
   requireRole('admin'),
   requireFacebookConfigured(),
   checkFacebookPage,
+);
+router.post(
+  '/pages/:pageId/subscription',
+  requireRole('admin'),
+  requireFacebookConfigured(),
+  subscribeFacebookPage,
 );
 router.delete('/pages/:pageId', requireRole('admin'), disconnectFacebookPage);
 

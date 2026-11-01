@@ -54,6 +54,12 @@ export function toPublicPage(page) {
     statusReason: page.statusReason ?? null,
     tokenExpiresAt: page.tokenExpiresAt ?? null,
     lastVerifiedAt: page.lastVerifiedAt ?? null,
+    webhook: {
+      subscribed: page.webhookSubscribed,
+      subscribedAt: page.webhookSubscribedAt ?? null,
+      error: page.webhookError ?? null,
+      lastEventAt: page.lastWebhookAt ?? null,
+    },
     connectedAt: page.createdAt,
     connectedBy: String(page.connectedBy),
   };

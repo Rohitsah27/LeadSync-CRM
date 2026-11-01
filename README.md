@@ -12,12 +12,12 @@ Multi-tenant SaaS that lets businesses connect their own Facebook Pages through 
 | 4     | Meta OAuth integration                 | Built       |
 | 5     | Facebook Pages integration             | Built       |
 | 6     | Lead forms and lead retrieval          | Built       |
-| 7     | Webhooks and automatic synchronization | Not started |
+| 7     | Webhooks and automatic synchronization | Built       |
 | 8     | CRM dashboard and lead management      | Not started |
 | 9     | Testing and security                   | Not started |
 | 10    | Render deployment                      | Not started |
 
-Phases 4 to 6 are covered by tests that use a mocked Facebook Graph API. They have not yet been run against a real Meta app (see [Meta app setup](docs/META_SETUP.md)).
+Phases 4 to 7 are covered by tests that use a mocked Facebook Graph API. They have not yet been run against a real Meta app (see [Meta app setup](docs/META_SETUP.md)). Live webhooks also need a public HTTPS address, which a tunnel or the Render deployment provides.
 
 ## Stack
 
@@ -56,7 +56,7 @@ Real credentials belong only in `server/.env` (or Render's environment settings)
 | `npm start`      | Starts the API (production mode)      |
 | `npm run format` | Formats the repo with Prettier        |
 
-`npm test` runs the server suite through `server/scripts/test.mjs`. On Node 24.15.0 for Windows a test worker sometimes dies natively (exit code `0xC0000409`) without any test failing, so the script re-runs the suite, up to 3 attempts in total, but only for that crash. A run with a real test failure is never retried. Trying Node 22 LTS may remove the crashes.
+`npm test` runs the server suite through `server/scripts/test.mjs`. On Node 24.15.0 for Windows a test worker sometimes dies natively (exit code `0xC0000409`) without any test failing, so the script re-runs only the test files that crashed, up to 4 attempts in total, and only for that crash. A run with a real test failure is never retried. Trying Node 22 LTS may remove the crashes.
 
 ## Project structure
 

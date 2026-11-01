@@ -208,24 +208,63 @@ const RESULTS_PER_REQUEST = 100;
  * Reads one result page. If Facebook rejects the field list (code 100), it retries once with a
  * smaller one rather than failing the whole sync over an optional field.
  */
-async function readEdge({ path, token, after, fieldSets }) {
+async function withFieldFallback(fieldSets, request) {
   for (let attempt = 0; attempt < fieldSets.length; attempt += 1) {
     try {
-      const body = await graphRequest({
-        path,
-        token,
-        params: { fields: fieldSets[attempt], limit: RESULTS_PER_REQUEST, after },
-      });
-      return {
-        items: body.data ?? [],
-        nextCursor: body.paging?.next ? (body.paging.cursors?.after ?? null) : null,
-      };
+      return await request(fieldSets[attempt]);
     } catch (err) {
       const canRetry = err instanceof MetaApiError && err.kind === 'invalid_request';
       if (!canRetry || attempt === fieldSets.length - 1) throw err;
     }
   }
-  return { items: [], nextCursor: null };
+  return null;
+}
+
+async function readEdge({ path, token, after, fieldSets }) {
+  const body = await withFieldFallback(fieldSets, (fields) =>
+    graphRequest({ path, token, params: { fields, limit: RESULTS_PER_REQUEST, after } }),
+  );
+  return {
+    items: body.data ?? [],
+    nextCursor: body.paging?.next ? (body.paging.cursors?.after ?? null) : null,
+  };
+}
+
+/** A single lead by id, as Facebook returns it. Webhook events carry only this id. */
+export function getLead(leadId, pageToken) {
+  return withFieldFallback(LEAD_FIELDS, (fields) =>
+    graphRequest({ path: `/${encodeURIComponent(leadId)}`, token: pageToken, params: { fields } }),
+  );
+}
+
+/** Subscribes the app to a Page's new-lead notifications. Needs the Page access token. */
+export function subscribePage(pageId, pageToken) {
+  return graphRequest({
+    method: 'POST',
+    path: `/${encodeURIComponent(pageId)}/subscribed_apps`,
+    token: pageToken,
+    params: { subscribed_fields: 'leadgen' },
+  });
+}
+
+export function unsubscribePage(pageId, pageToken) {
+  return graphRequest({
+    method: 'DELETE',
+    path: `/${encodeURIComponent(pageId)}/subscribed_apps`,
+    token: pageToken,
+  });
+}
+
+/** The apps subscribed to a Page and the fields each receives. */
+export async function getPageSubscriptions(pageId, pageToken) {
+  const body = await graphRequest({
+    path: `/${encodeURIComponent(pageId)}/subscribed_apps`,
+    token: pageToken,
+  });
+  return (body.data ?? []).map((app) => ({
+    appId: String(app.id),
+    fields: Array.isArray(app.subscribed_fields) ? app.subscribed_fields : [],
+  }));
 }
 
 function normalizeForm(form) {

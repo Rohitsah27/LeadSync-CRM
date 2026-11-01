@@ -26,6 +26,8 @@ export default defineConfig({
       META_OAUTH_REDIRECT_URI: 'https://api.leadsync.test/api/v1/facebook/oauth/callback',
       META_GRAPH_API_VERSION: 'v25.0',
       TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+      META_WEBHOOK_VERIFY_TOKEN: 'test-webhook-verify-token-123',
+      WEBHOOK_WORKER_INTERVAL_MS: '100',
     },
   },
 });

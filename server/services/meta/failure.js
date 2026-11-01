@@ -1,5 +1,17 @@
 import { MetaApiError } from './graphClient.js';
 
+/** Like describeFailure, but for subscribing a Page to new-lead notifications. */
+export function describeSubscriptionFailure(err) {
+  if (err instanceof MetaApiError && err.kind === 'permission') {
+    return {
+      status: 'permission',
+      message:
+        'Facebook would not let LeadSync subscribe to new leads for this Page. Check that the Meta app has the pages_manage_metadata permission and that your Facebook account has Advertiser access on the Page.',
+    };
+  }
+  return describeFailure(err);
+}
+
 /**
  * Describes a failed Graph call in terms a user can act on. `status` is stored on the form and
  * shown in the app; the message never carries Facebook's raw error text.

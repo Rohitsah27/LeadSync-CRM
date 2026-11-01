@@ -23,6 +23,11 @@ const facebookPageSchema = new mongoose.Schema(
     status: { type: String, enum: PAGE_STATUSES, default: 'active' },
     statusReason: { type: String, maxlength: 300, default: null },
     lastVerifiedAt: { type: Date, default: null },
+    // Whether Facebook has been told to send this Page's new leads to us, and when one last arrived.
+    webhookSubscribed: { type: Boolean, default: false },
+    webhookSubscribedAt: { type: Date, default: null },
+    webhookError: { type: String, maxlength: 500, default: null },
+    lastWebhookAt: { type: Date, default: null },
     connectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true },

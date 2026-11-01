@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { disconnectPage, recheckPage } from '../../services/facebook.js';
+import { disconnectPage, recheckPage, subscribePage } from '../../services/facebook.js';
 import { getErrorMessage } from '../../utils/errors.js';
-import { formatDate } from '../../utils/format.js';
+import { formatDate, formatDateTime } from '../../utils/format.js';
 import Alert from '../ui/Alert.jsx';
 import Button from '../ui/Button.jsx';
 import PageAvatar from './PageAvatar.jsx';
@@ -76,6 +76,41 @@ export default function ConnectedPageCard({ page, canManage, onChanged }) {
         )}
         {error && <Alert>{error}</Alert>}
       </div>
+
+      {isActive && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+          <div className="min-w-0 text-sm">
+            <p className="flex items-center gap-2 font-medium text-slate-700">
+              <span
+                aria-hidden="true"
+                className={`size-2 shrink-0 rounded-full ${
+                  page.webhook.subscribed ? 'bg-emerald-500' : 'bg-amber-400'
+                }`}
+              />
+              {page.webhook.subscribed
+                ? 'Receiving new leads automatically'
+                : 'Not receiving new leads automatically'}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {page.webhook.error ??
+                (page.webhook.lastEventAt
+                  ? `Last new lead ${formatDateTime(page.webhook.lastEventAt)}`
+                  : page.webhook.subscribed
+                    ? 'No new leads have arrived yet.'
+                    : 'You can still pull leads with Sync leads.')}
+            </p>
+          </div>
+          {canManage && !page.webhook.subscribed && (
+            <Button
+              variant="secondary"
+              loading={busy === 'subscribe'}
+              onClick={() => run('subscribe', () => subscribePage(page.pageId))}
+            >
+              Subscribe
+            </Button>
+          )}
+        </div>
+      )}
 
       {canManage && !confirmingRemoval && (
         <div className="mt-4 flex flex-wrap gap-2">

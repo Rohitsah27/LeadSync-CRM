@@ -22,7 +22,7 @@ export const leadPayloadAad = (workspaceId, facebookLeadId) =>
  * re-sync cannot overwrite a status or assignment someone has since changed.
  * Returns true when the lead was new.
  */
-async function insertIfNew(workspaceId, form, pageName, raw) {
+export async function insertIfNew(workspaceId, form, pageName, raw) {
   const facebookLeadId = String(raw.id);
   const now = new Date();
   const createdTime =

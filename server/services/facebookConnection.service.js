@@ -5,6 +5,8 @@ import { LeadForm } from '../models/LeadForm.js';
 import { AppError } from '../utils/AppError.js';
 import { logger } from '../utils/logger.js';
 import { debugToken, MetaApiError, revokePermissions } from './meta/graphClient.js';
+import { unsubscribeQuietly } from './pageSubscription.service.js';
+import { pageTokenAad, tokenAad } from './tokenAad.js';
 import { tokenCrypto } from './tokenCrypto.js';
 
 const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i;
@@ -23,9 +25,7 @@ const pagesLostConnection = () => ({
   $unset: { pageTokenCipher: '' },
 });
 
-/** Binds an encrypted token to its workspace and Facebook user, so it cannot be moved elsewhere. */
-export const tokenAad = (workspaceId, facebookUserId) =>
-  `fb-user-token:${workspaceId}:${facebookUserId}`;
+export { tokenAad };
 
 export function toApiError(err) {
   if (!(err instanceof MetaApiError)) return err;
@@ -174,7 +174,19 @@ export async function disconnectConnection(workspaceId, connectionId) {
   // The Pages were authorized through this account, so they go with it, and so do their forms.
   const pages = await FacebookPage.inWorkspace(workspaceId)
     .find({ connectionId: connection._id })
-    .select('pageId');
+    .select('pageId +pageTokenCipher');
+  // Stop Facebook sending these Pages' leads here. Best effort: the token may already be dead.
+  for (const page of pages) {
+    if (!page.pageTokenCipher) continue;
+    try {
+      await unsubscribeQuietly(
+        page.pageId,
+        tokenCrypto.decrypt(page.pageTokenCipher, pageTokenAad(workspaceId, page.pageId)),
+      );
+    } catch {
+      // A token that cannot be decrypted cannot be used to unsubscribe; disconnecting goes ahead.
+    }
+  }
   await LeadForm.inWorkspace(workspaceId).deleteMany({
     pageId: { $in: pages.map((page) => page.pageId) },
   });

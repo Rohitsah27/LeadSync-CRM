@@ -83,6 +83,19 @@ export const graphRoutes = (overrides = {}) => ({
   ...overrides,
 });
 
+/** Subscribing, unsubscribing and checking new-lead notifications for each fake Page. */
+const subscriptionRoutes = () =>
+  Object.fromEntries(
+    PAGES.flatMap(({ id }) => [
+      [`POST /${id}/subscribed_apps`, reply({ success: true })],
+      [`DELETE /${id}/subscribed_apps`, reply({ success: true })],
+      [
+        `GET /${id}/subscribed_apps`,
+        reply({ data: [{ id: env.meta.appId, subscribed_fields: ['leadgen'] }] }),
+      ],
+    ]),
+  );
+
 /** Three Pages split over two result pages, so pagination is exercised. */
 export const pageRoutes = (overrides = {}) => ({
   'GET /me/accounts': ({ params }) =>
@@ -95,6 +108,7 @@ export const pageRoutes = (overrides = {}) => ({
   'GET /111': reply(withoutToken(PAGES[0])),
   'GET /222': reply(withoutToken(PAGES[1])),
   'GET /333': reply(withoutToken(PAGES[2])),
+  ...subscriptionRoutes(),
   ...overrides,
 });
 

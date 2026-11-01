@@ -60,6 +60,8 @@ const schema = z.object({
   // Each Facebook request returns up to 100 leads, so a sync handles at most 100 x this per form
   // before it stops and resumes on the next run. This keeps a request short and polite to Meta.
   LEAD_SYNC_MAX_REQUESTS_PER_FORM: z.coerce.number().int().min(1).max(100).default(10),
+  // How often the background worker looks for webhook events that are due (new, or retrying).
+  WEBHOOK_WORKER_INTERVAL_MS: z.coerce.number().int().min(100).max(300_000).default(10_000),
   META_APP_ID: numericId.optional(),
   META_APP_SECRET: z.string().min(16, 'looks too short to be an app secret').optional(),
   META_GRAPH_API_VERSION: z
@@ -68,6 +70,8 @@ const schema = z.object({
     .default('v25.0'),
   META_LOGIN_CONFIG_ID: numericId.optional(),
   META_OAUTH_REDIRECT_URI: z.url('must be a valid URL').optional(),
+  // The secret Meta sends back when it checks the webhook URL. Any long random string.
+  META_WEBHOOK_VERIFY_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   TOKEN_ENCRYPTION_KEY: z.string().refine(isValidKey, keyMessage).optional(),
   // Retired keys, comma-separated. They can still decrypt old data while it is re-encrypted.
   TOKEN_ENCRYPTION_KEY_PREVIOUS: z
@@ -124,6 +128,7 @@ export function parseEnv(source = process.env) {
     META_APP_SECRET: data.META_APP_SECRET,
     META_LOGIN_CONFIG_ID: data.META_LOGIN_CONFIG_ID,
     META_OAUTH_REDIRECT_URI: data.META_OAUTH_REDIRECT_URI,
+    META_WEBHOOK_VERIFY_TOKEN: data.META_WEBHOOK_VERIFY_TOKEN,
   };
   const metaConfigured = Object.values(metaSettings).some(Boolean);
   if (metaConfigured || isProduction) {
@@ -160,6 +165,7 @@ export function parseEnv(source = process.env) {
       rateLimitMax: data.AUTH_RATE_LIMIT_MAX,
     }),
     leadSync: Object.freeze({ maxRequestsPerForm: data.LEAD_SYNC_MAX_REQUESTS_PER_FORM }),
+    webhook: Object.freeze({ workerIntervalMs: data.WEBHOOK_WORKER_INTERVAL_MS }),
     meta: metaConfigured
       ? Object.freeze({
           appId: data.META_APP_ID,
@@ -167,6 +173,7 @@ export function parseEnv(source = process.env) {
           graphVersion: data.META_GRAPH_API_VERSION,
           loginConfigId: data.META_LOGIN_CONFIG_ID,
           redirectUri: data.META_OAUTH_REDIRECT_URI,
+          webhookVerifyToken: data.META_WEBHOOK_VERIFY_TOKEN,
         })
       : null,
     tokenEncryption: data.TOKEN_ENCRYPTION_KEY

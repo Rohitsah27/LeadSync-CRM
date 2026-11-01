@@ -15,6 +15,7 @@ import {
   disconnectPage,
   listAvailablePages,
   listPages,
+  subscribePageToLeads,
   verifyPage,
 } from '../services/facebookPage.service.js';
 import { MetaApiError } from '../services/meta/graphClient.js';
@@ -100,6 +101,11 @@ export async function listAvailableFacebookPages(req, res) {
 export async function connectFacebookPage(req, res) {
   const page = await connectPage(req.workspaceId, req.user._id, req.body);
   res.status(201).json({ page: toPublicPage(page) });
+}
+
+export async function subscribeFacebookPage(req, res) {
+  const page = await subscribePageToLeads(req.workspaceId, req.params.pageId);
+  res.json({ page: toPublicPage(page) });
 }
 
 export async function checkFacebookPage(req, res) {

@@ -48,9 +48,23 @@ Not yet confirmed: Meta lists `ads_management`, `ads_read` and `business_managem
 
 ## Webhooks
 
-- Subscribe the app to the **Page** object, field **leadgen**.
-- Each Page is subscribed with `POST /{page-id}/subscribed_apps` using `subscribed_fields=leadgen` and a Page access token from a person who can perform the ADVERTISE task.
-- Payload fields: `leadgen_id`, `page_id`, `form_id`, `ad_id`, `adgroup_id`, `created_time`.
+Meta needs two things before it sends new leads to LeadSync: the **app** has to be subscribed to the Page object, and **each Page** has to be subscribed to the app.
+
+- **App level (once, in the dashboard).** Under **Webhooks**, choose the **Page** object, set the callback URL to `https://<your-api-host>/api/v1/webhooks/meta` and the verify token to the value of `META_WEBHOOK_VERIFY_TOKEN`, then subscribe to the **leadgen** field. Meta calls the URL straight away to check it, so the server has to be running with the same token.
+- **Page level (automatic).** LeadSync subscribes a Page when it is connected, using `POST /{page-id}/subscribed_apps` with `subscribed_fields=leadgen` and the Page access token. The token's owner needs the ADVERTISE task on the Page and the `pages_manage_metadata` permission. If Meta refuses, the Page still connects, the card says why, and **Subscribe** on the card tries again. Disconnecting a Page, or its Facebook account, removes the subscription.
+- Payload fields: `leadgen_id`, `page_id`, `form_id`, `ad_id`, `adgroup_id`, `created_time`. The payload holds ids only. LeadSync fetches the lead itself with the Page token.
+- Every request is checked against its `X-Hub-Signature-256` header, which is an HMAC of the exact request bytes made with the App Secret. A request without a valid signature is rejected with 401 and nothing is stored.
+
+### Trying it on your own machine
+
+Meta can only reach a public HTTPS address, so `localhost` will not work as a callback. Use a tunnel such as `cloudflared tunnel --url http://localhost:5000` or `ngrok http 5000`, and use the HTTPS address it prints as `<your-api-host>`. The tunnel address changes each time unless you pay for a fixed one, so update the callback URL in the dashboard when it does. Deploying to Render (Phase 10) gives a permanent address.
+
+1. Set `META_WEBHOOK_VERIFY_TOKEN` in `server/.env` to any random string of at least 16 characters, for example `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`. Like the other Meta settings it is all-or-nothing: set it together with the rest.
+2. Start the server and the tunnel, then save the callback URL and token in the dashboard. Meta shows an error if the verification fails.
+3. Connect a Page and check that its card says **Receiving new leads automatically**.
+4. Submit a lead on the Page's form. While the app is in Development mode the Lead Ads Testing Tool does not work (see the open items below), so use a real submission by someone with a role on the app, or create one through the API (`POST /{form-id}/test_leads`). It should appear in **Leads** within a few seconds. If it does not, **Sync leads** still pulls it.
+
+Meta redelivers events that were not acknowledged, for up to 36 hours. LeadSync saves each event before it answers, ignores repeats, and retries lookups that fail for temporary reasons, so a short outage loses nothing.
 
 ## Phase 4 setup checklist
 
@@ -60,7 +74,7 @@ The OAuth code is finished and covered by tests that use a fake Graph API, but i
 2. Create the Login for Business **configuration** (user access token) with the permissions listed above, and copy its Configuration ID.
 3. Under the login settings, add the callback as a **Valid OAuth Redirect URI**. It must exactly match `META_OAUTH_REDIRECT_URI`, for example `http://localhost:5000/api/v1/facebook/oauth/callback` for local development.
 4. Set the **Deauthorize Callback URL** to `https://<your-api-host>/api/v1/facebook/deauthorize`. It must be public HTTPS, so skip it for local development.
-5. Put the values in `server/.env`: `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID`, `META_OAUTH_REDIRECT_URI` and `TOKEN_ENCRYPTION_KEY` (a local one is generated for you). The Facebook settings are all-or-nothing: if any one is set, all must be, and the server refuses to start otherwise. They are required in production.
+5. Put the values in `server/.env`: `META_APP_ID`, `META_APP_SECRET`, `META_LOGIN_CONFIG_ID`, `META_OAUTH_REDIRECT_URI`, `META_WEBHOOK_VERIFY_TOKEN` (any random string of 16 or more characters, see Webhooks above) and `TOKEN_ENCRYPTION_KEY` (a local one is generated for you). The Facebook settings are all-or-nothing: if any one is set, all must be, and the server refuses to start otherwise. They are required in production.
 6. While the app is in Development mode, sign in to Facebook as someone with a role on the app.
 
 If a connection shows missing permissions, the configuration does not include them. Adding `pages_manage_ads` is expected to be needed for lead retrieval.
@@ -76,3 +90,5 @@ Tokens are encrypted with AES-256-GCM using `TOKEN_ENCRYPTION_KEY`. To rotate: g
 - Test leads: the Lead Ads Testing Tool does not work while the app is in Development mode. Use real submissions by people with a role on the app, or create test leads through the API (`POST /{form-id}/test_leads`).
 - Whether Page tokens obtained from a long-lived user token are non-expiring, checked with `debug_token` (Phase 4).
 - Lead rate limit: 200 x 24 x (leads created in the past 90 days), per Page.
+- Webhooks (Phase 7): whether `pages_manage_metadata` is needed on top of the lead permissions to subscribe a Page, and whether Development mode delivers leadgen events for real submissions. The Page card shows the exact refusal from Facebook if the subscription fails, and **Sync leads** works either way.
+- Webhooks (Phase 7): the shape of `GET /{page-id}/subscribed_apps`. The code treats the Page as subscribed only when this app's id appears with `leadgen` among its fields; check that a freshly subscribed Page reports that way.

@@ -51,7 +51,8 @@ server/   Express 5 API (ESM)
 - The Meta App Secret exists only on the server.
 - Webhook signatures (`X-Hub-Signature-256`) are verified against the raw request body.
 - Request logs redact `Authorization`, `Cookie` and `Set-Cookie`.
-- CORS allows only the origins in `FRONTEND_URL`.
+- CORS allows only the origins in `FRONTEND_URL`, matched exactly (scheme, host and port; never a wildcard, because the refresh cookie needs `credentials`). It runs before every route, answers preflight requests itself with a `204` (so they never reach authentication or the rate limiter), and allows the methods `GET POST PUT PATCH DELETE OPTIONS` and the headers `Authorization` and `Content-Type`. A new request header from the client has to be added to `allowedHeaders` in `server/app.js`.
+- Browser clients on Render sit on a different site from the API, so the API service needs `NODE_ENV=production` (which makes the refresh cookie `SameSite=None; Secure`, and also makes the Facebook settings mandatory) and `FRONTEND_URL` set to the exact origin of the static site, for example `https://leadsync-crm.onrender.com`. The static site's `VITE_API_URL` must end in `/api/v1`. The API logs the origins it allows when it starts.
 
 ## Authentication (Phase 2)
 
@@ -86,6 +87,7 @@ server/   Express 5 API (ESM)
             the server checks its token with debug_token and stores it encrypted (FacebookPage)
 5. Server   (Phase 7) subscribe the Page: POST /{page}/subscribed_apps?subscribed_fields=leadgen
 6. Server   (Phase 6) GET /{page}/leadgen_forms -> LeadForm; GET /{form}/leads (cursor paging) -> Lead (deduped)
+7. Meta     (Phase 7) POST /webhooks/meta when a lead is submitted -> WebhookEvent -> Lead
 ```
 
 ## Facebook Pages (Phase 5)
@@ -95,7 +97,7 @@ server/   Express 5 API (ESM)
 - **One Page, one workspace.** A unique index on `pageId` means a Page can feed only one workspace, so a webhook event can be routed by Page id alone without crossing tenants. A live claim cannot be taken over. A dead claim (token gone) is released to whoever proves access with a live token.
 - **Dies with its connection.** A Page token is derived from the user's token, so it is discarded whenever the connection expires, is revoked, is found dead, or is deauthorized on Facebook, and Pages are deleted when the connection is disconnected. The Page record stays as `invalid` so the UI can explain it.
 - **Restored on reconnect.** When a connection is renewed, its invalid Pages get fresh tokens automatically, if the account still manages them. A failure here never fails the login.
-- **Webhook subscription is Phase 7.** Disconnecting a Page will then also unsubscribe it.
+- **Webhook subscription (Phase 7).** Connecting a Page subscribes it to `leadgen`; disconnecting a Page, or its Facebook account, unsubscribes it; restoring Pages after a reconnect subscribes them again. A refusal from Facebook never blocks any of these: the Page keeps working and records why it is not subscribed (`webhookError`), and an admin can retry. A re-check asks Facebook what it really has (`GET /{page}/subscribed_apps`) rather than trusting the stored flag, but leaves the flag alone if Facebook cannot answer.
 
 ## Lead forms and lead retrieval (Phase 6)
 
@@ -111,14 +113,21 @@ server/   Express 5 API (ESM)
 ## Webhook flow (Phase 7)
 
 ```
-GET   verify: compare hub.verify_token, echo hub.challenge
-POST  event : verify signature on raw body -> insert WebhookEvent (unique leadgen_id)
-              -> respond 200 immediately
-Worker      : fetch GET /{leadgen_id} with the Page token -> upsert Lead
-              retry with backoff on rate-limit errors; mark connection expired on error 190
+GET   verify: compare hub.verify_token (constant time), echo hub.challenge as text/plain
+POST  event : verify X-Hub-Signature-256 over the raw bytes -> route each change by Page id to its
+              workspace -> insert WebhookEvent (unique {workspaceId, leadgenId}) -> respond 200
+Worker      : claim one event atomically -> GET /{leadgen_id} with the Page token
+              -> insert the Lead if new -> mark the event processed
+              temporary failure: retry with backoff; bad Page token: verify the Page and fail
 ```
 
-Meta retries failed deliveries for up to 36 hours, so handlers must be idempotent.
+- **Raw body.** The route is mounted before `express.json()`, so the signature is computed over exactly what Meta sent. Re-serializing parsed JSON would not match. It is also mounted before the API rate limiter, because the signature is the control here and Meta's bursts must not be throttled.
+- **Save first, answer fast.** Events are written to MongoDB before the `200`, then a worker fetches the lead. A slow Graph API cannot make Meta time out and redeliver, and a crash after the `200` loses nothing because the event is already stored.
+- **Routing without crossing tenants.** The payload names a Page, and a Page belongs to exactly one workspace (unique index), so the Page id alone decides the tenant. Events for Pages nobody has connected are dropped, not stored, so unauthenticated-looking traffic cannot fill the database.
+- **Idempotent.** Meta redelivers for up to 36 hours and can repeat events. A unique index on `{workspaceId, leadgenId}` makes the second delivery a counted duplicate, and the lead itself is inserted with the same insert-only upsert the bulk sync uses, so a lead that arrives by webhook and by sync is stored once and never overwritten.
+- **Queue in MongoDB, no Redis.** An event is claimed with one atomic `findOneAndUpdate` (pending or retry and due, or `processing` with a lock older than five minutes), so two workers or a restart cannot process the same event twice or leave one stuck. Retries back off 30 s, 2 min, 10 min, 30 min, 1 h and stop after six attempts. Finished events are deleted by a TTL index: processed after 30 days, ignored after 7 and failed after 90 (kept longest so a problem can still be investigated).
+- **Worker lifecycle.** `webhookWorker` polls every `WEBHOOK_WORKER_INTERVAL_MS` and is woken immediately when events arrive. It runs one pass at a time, and shutdown waits for the pass in progress before closing the database. It only runs when the Facebook settings are configured.
+- **When the app is down.** Meta retries undelivered events for up to 36 hours. Anything older, or anything that was never delivered, is still picked up by **Sync leads**, which is why webhooks and bulk sync both exist.
 
 ## Conventions
 

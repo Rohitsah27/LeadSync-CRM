@@ -708,6 +708,12 @@ describe('facebook pages page', () => {
     statusReason: null,
     tokenExpiresAt: null,
     lastVerifiedAt: '2026-11-01T10:00:00.000Z',
+    webhook: {
+      subscribed: true,
+      subscribedAt: '2026-11-01T09:00:00.000Z',
+      error: null,
+      lastEventAt: null,
+    },
     connectedAt: '2026-10-31T10:00:00.000Z',
     connectedBy: 'u1',
     ...overrides,
@@ -854,6 +860,108 @@ describe('facebook pages page', () => {
     expect(screen.getByText(/needs to be reconnected/)).toBeInTheDocument();
     const link = screen.getAllByRole('link', { name: 'Connections page' })[0];
     expect(link).toHaveAttribute('href', '/connections');
+  });
+
+  describe('new-lead notifications', () => {
+    const webhook = (overrides = {}) => ({
+      subscribed: true,
+      subscribedAt: '2026-11-01T09:00:00.000Z',
+      error: null,
+      lastEventAt: null,
+      ...overrides,
+    });
+
+    it('shows that new leads arrive automatically, and when the last one did', async () => {
+      facebookService.fetchPages.mockResolvedValue([
+        page({ webhook: webhook({ lastEventAt: '2026-11-01T09:30:00.000Z' }) }),
+      ]);
+      renderAt('/pages');
+
+      expect(await screen.findByText('Receiving new leads automatically')).toBeInTheDocument();
+      expect(screen.getByText(/Last new lead/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Subscribe' })).not.toBeInTheDocument();
+    });
+
+    it('says none have arrived yet for a Page that was only just subscribed', async () => {
+      renderAt('/pages');
+
+      expect(await screen.findByText('No new leads have arrived yet.')).toBeInTheDocument();
+    });
+
+    it('explains why a Page is not receiving leads, and lets an admin subscribe it', async () => {
+      facebookService.fetchPages.mockResolvedValue([
+        page({
+          webhook: webhook({
+            subscribed: false,
+            error: 'Facebook would not let LeadSync subscribe to new leads for this Page.',
+          }),
+        }),
+      ]);
+      facebookService.subscribePage.mockResolvedValue(page());
+      const user = userEvent.setup();
+      renderAt('/pages');
+
+      expect(await screen.findByText('Not receiving new leads automatically')).toBeInTheDocument();
+      expect(screen.getByText(/would not let LeadSync subscribe/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Subscribe' }));
+
+      expect(facebookService.subscribePage).toHaveBeenCalledWith('111');
+      await waitFor(() => expect(facebookService.fetchPages).toHaveBeenCalledTimes(2));
+    });
+
+    it('points to manual syncing when nothing specific went wrong', async () => {
+      facebookService.fetchPages.mockResolvedValue([
+        page({ webhook: webhook({ subscribed: false }) }),
+      ]);
+      renderAt('/pages');
+
+      expect(
+        await screen.findByText(/You can still pull leads with Sync leads/),
+      ).toBeInTheDocument();
+    });
+
+    it('shows why subscribing failed', async () => {
+      facebookService.fetchPages.mockResolvedValue([
+        page({ webhook: webhook({ subscribed: false }) }),
+      ]);
+      facebookService.subscribePage.mockRejectedValue(
+        apiError(502, {
+          code: 'WEBHOOK_SUBSCRIPTION_FAILED',
+          message: 'Check that the Meta app has the pages_manage_metadata permission.',
+        }),
+      );
+      const user = userEvent.setup();
+      renderAt('/pages');
+
+      await user.click(await screen.findByRole('button', { name: 'Subscribe' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('pages_manage_metadata');
+    });
+
+    it('lets plain members see the status but not change it', async () => {
+      signInAs('member');
+      facebookService.fetchPages.mockResolvedValue([
+        page({ webhook: webhook({ subscribed: false }) }),
+      ]);
+      renderAt('/pages');
+
+      expect(await screen.findByText('Not receiving new leads automatically')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Subscribe' })).not.toBeInTheDocument();
+    });
+
+    it('does not show the status for a Page that needs reconnecting', async () => {
+      facebookService.fetchPages.mockResolvedValue([
+        page({
+          status: 'invalid',
+          statusReason: 'The Facebook connection needs to be reconnected',
+        }),
+      ]);
+      renderAt('/pages');
+
+      expect(await screen.findByText('Needs reconnecting')).toBeInTheDocument();
+      expect(screen.queryByText(/new leads automatically/)).not.toBeInTheDocument();
+    });
   });
 
   it('warns when the user lacks Advertiser access on a connected Page', async () => {
