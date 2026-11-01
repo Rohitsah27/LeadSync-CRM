@@ -7,6 +7,7 @@ import {
   exchangeCodeForToken,
   exchangeForLongLivedToken,
   getProfile,
+  listLeadForms,
   MetaApiError,
   revokePermissions,
 } from '../services/meta/graphClient.js';
@@ -86,6 +87,20 @@ describe('requests', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url).startsWith('https://graph.facebook.com/v25.0/me')).toBe(true);
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe('optional parameters', () => {
+  it('leaves out a parameter that is null or undefined instead of sending the text "null"', async () => {
+    const { calls } = mockGraph({ 'GET /111/leadgen_forms': reply({ data: [] }) });
+
+    await listLeadForms('111', 'PAGE_TOKEN', { after: null });
+    await listLeadForms('111', 'PAGE_TOKEN', { after: undefined });
+    await listLeadForms('111', 'PAGE_TOKEN', { after: 'C3' });
+
+    expect(calls[0].params).not.toHaveProperty('after');
+    expect(calls[1].params).not.toHaveProperty('after');
+    expect(calls[2].params.after).toBe('C3');
   });
 });
 

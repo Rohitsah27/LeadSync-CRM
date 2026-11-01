@@ -29,6 +29,13 @@ Status: outline only. Finalized in Phase 9, and the public Privacy Policy is der
 - It is deleted when the Page is disconnected, when its Facebook connection is disconnected, and whenever Facebook reports it expired or revoked.
 - The list of Pages a user could connect is read from Facebook on demand and is not stored.
 
+## Lead data
+
+- Each lead's name, email, phone and custom answers are stored in the workspace that owns the Page, readable by that workspace's members only.
+- The complete original response from Facebook is stored encrypted and is not shown anywhere.
+- Disconnecting a Page or Facebook account keeps the leads already imported, because they are the customer's CRM data. They are removed only when the customer deletes them or the workspace's data is deleted.
+- Leads are only ever imported from Pages the workspace connected with a token Facebook issued for that purpose.
+
 ## Retention and deletion
 
 - Disconnecting Facebook revokes and deletes the stored tokens.

@@ -204,6 +204,61 @@ Rules worth knowing:
 - **Status.** `active`, or `invalid` when the token is gone (the Facebook connection expired, was revoked or was disconnected). Invalid Pages have no stored token. Renewing the Facebook connection restores the Pages it previously held.
 - **Disconnecting a Facebook account** deletes its Pages. Webhook subscriptions are added in Phase 7.
 
+## Lead forms and leads
+
+Lead Ads forms on connected Pages, and the leads pulled from them. Reading is open to every member; refreshing forms, syncing leads and changing a form's sync setting need the `admin` role. Syncing also needs the Facebook settings to be configured on the server.
+
+| Method | Path                    | Description                                                                                      |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| GET    | `/api/v1/forms`         | The workspace's forms with how many leads are stored. Query: `pageId`                            |
+| POST   | `/api/v1/forms/sync`    | Reload forms from Facebook. Body (optional): `{ "pageId" }`. Returns `{ results, forms }`        |
+| PATCH  | `/api/v1/forms/:formId` | Switch bulk syncing on or off. Body: `{ "syncEnabled": true }`                                   |
+| POST   | `/api/v1/leads/sync`    | Pull leads. Body (optional): `{ "formId" }` and/or `{ "pageId" }`. Returns `{ results, totals }` |
+| GET    | `/api/v1/leads`         | A page of leads, newest first                                                                    |
+| GET    | `/api/v1/leads/:leadId` | One lead                                                                                         |
+
+`GET /leads` query parameters: `page` (default 1), `limit` (1 to 100, default 25), `status` (`new`, `contacted`, `qualified`, `converted`, `lost`), `formId`, `pageId`. It returns `{ leads, total, page, limit, totalPages }`. Repeated or unknown values are rejected with `400`. Search, date ranges and status changes arrive with the dashboard in Phase 8.
+
+A lead looks like:
+
+```json
+{
+  "id": "665f...",
+  "pageId": "111",
+  "pageName": "Acme Realty",
+  "formId": "555",
+  "formName": "Spring Offer",
+  "facebookLeadId": "1234567890",
+  "fullName": "Priya Shah",
+  "email": "priya@example.com",
+  "phone": "+15550001",
+  "customFields": [{ "key": "budget", "value": "$500k" }],
+  "leadStatus": "new",
+  "createdTime": "2026-10-31T11:59:00.000Z",
+  "source": "facebook_lead_ads",
+  "assignedTo": null,
+  "syncedAt": "2026-11-01T10:00:00.000Z"
+}
+```
+
+The original Facebook response is stored encrypted and is never returned.
+
+### How a lead sync behaves
+
+Each sync returns one result per form: `{ formId, name, pageId, status, message, fetched, created }`. `status` is:
+
+| Status         | Meaning                                                                             |
+| -------------- | ----------------------------------------------------------------------------------- |
+| `ok`           | All new leads were read                                                             |
+| `partial`      | The per-run request limit was reached; sync again to continue where it stopped      |
+| `permission`   | Facebook refused access to the leads (missing `leads_retrieval`, or no lead access) |
+| `rate_limited` | Facebook is limiting requests for the Page; progress so far is kept                 |
+| `invalid`      | The Page's token no longer works; reconnect the Facebook account                    |
+| `busy`         | Another sync of this form is already running                                        |
+| `error`        | Facebook could not be reached or rejected the request                               |
+
+A failing form never stops the others, and the request itself still returns `200`. Syncing is safe to repeat: a lead is stored once per workspace and an existing lead is never overwritten, so a status or assignment someone changed survives. Naming a `formId` syncs that form even if bulk syncing is switched off for it.
+
 ## Health
 
 `GET /health` and `GET /api/v1/health`

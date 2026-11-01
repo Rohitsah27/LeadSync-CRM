@@ -71,6 +71,8 @@ Tokens are encrypted with AES-256-GCM using `TOKEN_ENCRYPTION_KEY`. To rotate: g
 
 ## Open items to verify live
 
-- Exact permissions and fields for listing forms: `GET /{page-id}/leadgen_forms` (Phase 6).
+- Exact fields for `GET /{page-id}/leadgen_forms` and `GET /{form-id}/leads`. Meta's reference pages for them could not be confirmed, so the code asks for a sensible field list and retries once with a smaller one if Facebook rejects it. Check the first real sync's result.
+- Which Page roles can read leads. Facebook can restrict lead access through Leads Access Manager even for Page admins; a refusal shows up as a `permission` status on the form.
+- Test leads: the Lead Ads Testing Tool does not work while the app is in Development mode. Use real submissions by people with a role on the app, or create test leads through the API (`POST /{form-id}/test_leads`).
 - Whether Page tokens obtained from a long-lived user token are non-expiring, checked with `debug_token` (Phase 4).
 - Lead rate limit: 200 x 24 x (leads created in the past 90 days), per Page.

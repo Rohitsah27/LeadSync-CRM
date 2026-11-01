@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { FacebookConnection } from '../models/FacebookConnection.js';
 import { FacebookPage } from '../models/FacebookPage.js';
+import { LeadForm } from '../models/LeadForm.js';
 import { AppError } from '../utils/AppError.js';
 import {
   inspectToken,
@@ -118,6 +119,7 @@ async function releaseDeadClaim(workspaceId, pageId) {
 
   if (claim.status === 'active') throw pageInUse();
   await FacebookPage.deleteOne({ _id: claim._id }).unscoped();
+  await LeadForm.inWorkspace(claim.workspaceId).deleteMany({ pageId });
 }
 
 export async function connectPage(workspaceId, userId, { connectionId, pageId }) {
@@ -235,6 +237,8 @@ export async function verifyPage(workspaceId, pageId) {
 export async function disconnectPage(workspaceId, pageId) {
   const page = await loadPage(workspaceId, pageId);
   await FacebookPage.inWorkspace(workspaceId).deleteOne({ _id: page._id });
+  // Its forms go with it. The leads they produced stay: they are the customer's CRM data.
+  await LeadForm.inWorkspace(workspaceId).deleteMany({ pageId: page.pageId });
 }
 
 /**

@@ -7,6 +7,7 @@ import AuthProvider from './context/AuthProvider.jsx';
 import * as authService from './services/auth.js';
 import { fetchHealth } from './services/health.js';
 import * as facebookService from './services/facebook.js';
+import * as leadsService from './services/leads.js';
 import * as workspaceService from './services/workspace.js';
 import { redirectTo } from './utils/navigation.js';
 
@@ -14,6 +15,7 @@ vi.mock('./services/auth.js');
 vi.mock('./services/health.js');
 vi.mock('./services/workspace.js');
 vi.mock('./services/facebook.js');
+vi.mock('./services/leads.js');
 vi.mock('./utils/navigation.js');
 
 const session = {
@@ -87,9 +89,17 @@ describe('signed-in navigation', () => {
   });
 
   it('renders the lead details route', async () => {
+    leadsService.fetchLead.mockResolvedValue({
+      id: 'abc123',
+      fullName: 'Priya Shah',
+      leadStatus: 'new',
+      customFields: [],
+      createdTime: '2026-10-31T11:59:00.000Z',
+    });
     renderAt('/leads/abc123');
 
-    expect(await screen.findByRole('heading', { name: 'Lead Details' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Priya Shah' })).toBeInTheDocument();
+    expect(leadsService.fetchLead).toHaveBeenCalledWith('abc123');
   });
 
   it('renders a not-found page for unknown routes', async () => {

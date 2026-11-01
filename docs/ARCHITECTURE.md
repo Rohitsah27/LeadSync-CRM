@@ -97,6 +97,17 @@ server/   Express 5 API (ESM)
 - **Restored on reconnect.** When a connection is renewed, its invalid Pages get fresh tokens automatically, if the account still manages them. A failure here never fails the login.
 - **Webhook subscription is Phase 7.** Disconnecting a Page will then also unsubscribe it.
 
+## Lead forms and lead retrieval (Phase 6)
+
+- **Forms** come from `GET /{page}/leadgen_forms` with the Page token and are stored per Page (`LeadForm`). A form Facebook stops listing is marked `DELETED`, but only after a complete listing, so a truncated one never deletes real forms. Forms are removed when their Page or Facebook connection is disconnected; the leads stay.
+- **Leads** come from `GET /{form}/leads` (newest first, cursor paged) and are stored with the answers mapped to name, email and phone (`services/leadMapper.js`). Every other answer is kept as a custom field, and an invalid email stays a custom field instead of being lost.
+- **No duplicates.** A unique index on `{workspaceId, facebookLeadId}` plus an insert-only upsert (`$setOnInsert`) means a lead is stored once and a re-sync cannot overwrite a status or assignment changed since.
+- **Incremental, resumable, bounded.** Until a first full pass finishes, a sync reads every page of results and saves its position, so the next run resumes there. After that it stops at the first page with nothing new. A run makes at most `LEAD_SYNC_MAX_REQUESTS_PER_FORM` Facebook requests (10 by default, about 1,000 leads), which keeps a web request short and respects Facebook's per-Page limits. If more arrive than one run can read, the position is saved the same way.
+- **One sync per form at a time**, using a lock with an expiry so a crashed run cannot block the form forever.
+- **Failures are per form.** Facebook errors become a status and a plain message (permission, rate limit, invalid token, unavailable), are stored on the form, and never stop other forms. An invalid-token error also marks the Page invalid.
+- **Personal data.** Name, email and phone are stored readable so they can be searched. The complete original response is stored encrypted (AES-256-GCM with the same key ring as tokens, bound to the workspace and lead) and is never returned by the API. Leads carry their own copy of the Page and form names, so they still display after a Page is disconnected.
+- **Field lists.** Facebook's reference for these two endpoints could not be confirmed against its documentation, so each request retries once with a smaller field list if Facebook rejects the first. The first live run against a real Page should confirm which fields it accepts.
+
 ## Webhook flow (Phase 7)
 
 ```

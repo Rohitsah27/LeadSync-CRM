@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { FacebookConnection } from '../models/FacebookConnection.js';
 import { FacebookPage } from '../models/FacebookPage.js';
+import { LeadForm } from '../models/LeadForm.js';
 import { AppError } from '../utils/AppError.js';
 import { logger } from '../utils/logger.js';
 import { debugToken, MetaApiError, revokePermissions } from './meta/graphClient.js';
@@ -170,7 +171,13 @@ export async function disconnectConnection(workspaceId, connectionId) {
     }
   }
 
-  // The Pages were authorized through this account, so they go with it.
+  // The Pages were authorized through this account, so they go with it, and so do their forms.
+  const pages = await FacebookPage.inWorkspace(workspaceId)
+    .find({ connectionId: connection._id })
+    .select('pageId');
+  await LeadForm.inWorkspace(workspaceId).deleteMany({
+    pageId: { $in: pages.map((page) => page.pageId) },
+  });
   await FacebookPage.inWorkspace(workspaceId).deleteMany({ connectionId: connection._id });
   await scoped.deleteOne({ _id: connection._id });
 }

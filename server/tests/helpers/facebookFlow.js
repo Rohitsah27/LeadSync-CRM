@@ -1,9 +1,10 @@
 import request from 'supertest';
 import { env } from '../../config/env.js';
+import { FacebookConnection } from '../../models/FacebookConnection.js';
 import { User } from '../../models/User.js';
 import { REQUIRED_SCOPES } from '../../services/meta/scopes.js';
 import { hashPassword } from '../../services/password.service.js';
-import { reply } from './graphMock.js';
+import { mockGraph, reply } from './graphMock.js';
 
 export const API = '/api/v1';
 export const FB_USER = '10001000100010';
@@ -97,6 +98,61 @@ export const pageRoutes = (overrides = {}) => ({
   ...overrides,
 });
 
+export const FORMS = [
+  {
+    id: '555',
+    name: 'Spring Offer',
+    status: 'ACTIVE',
+    locale: 'en_US',
+    leads_count: 8,
+    created_time: '2026-09-01T00:00:00+0000',
+    questions: [
+      { key: 'full_name', label: 'Full name', type: 'FULL_NAME' },
+      { key: 'email', label: 'Email', type: 'EMAIL' },
+    ],
+  },
+  {
+    id: '666',
+    name: 'Old Promo',
+    status: 'ARCHIVED',
+    locale: 'en_US',
+    leads_count: 2,
+    created_time: '2026-01-01T00:00:00+0000',
+    questions: [],
+  },
+];
+
+/** A lead as Facebook returns it. Lower numbers are newer, matching Facebook's newest-first order. */
+export const makeLead = (number, overrides = {}) => ({
+  id: `lead-${number}`,
+  created_time: new Date(Date.UTC(2026, 9, 31, 12, 0, 0) - number * 60_000)
+    .toISOString()
+    .replace('.000Z', '+0000'),
+  form_id: '555',
+  is_organic: false,
+  field_data: [
+    { name: 'full_name', values: [`Person ${number}`] },
+    { name: 'email', values: [`person${number}@example.com`] },
+    { name: 'phone_number', values: [`+1555000${String(number).padStart(4, '0')}`] },
+    { name: 'budget', values: ['$500k'] },
+  ],
+  ...overrides,
+});
+
+/** Serves `leads` a few at a time, with Facebook-style cursors (`C3` means "start at the 4th"). */
+export function pagedLeads(leads, perPage) {
+  return ({ params }) => {
+    const start = params.after ? Number(params.after.slice(1)) : 0;
+    const next = start + perPage;
+    return reply({
+      data: leads.slice(start, next),
+      ...(next < leads.length && {
+        paging: { cursors: { after: `C${next}` }, next: 'https://graph.facebook.com/next' },
+      }),
+    });
+  };
+}
+
 /** Helpers that drive the real HTTP API for one app instance. */
 export function createFlow(app) {
   async function signUp(email, businessName) {
@@ -139,5 +195,18 @@ export function createFlow(app) {
     return callback({ state: flow.state, cookie: flow.cookie, code: 'AUTH_CODE' });
   }
 
-  return { signUp, addMember, startConnect, callback, completeLogin };
+  /** Connects an account's Facebook and one Page. Returns the new connection's id. */
+  async function connectPageFor(account, pageId = '111') {
+    mockGraph(graphRoutes(pageRoutes()));
+    await completeLogin(account);
+    const connection = await FacebookConnection.inWorkspace(account.workspace.id).findOne();
+    const connectionId = String(connection._id);
+    await request(app)
+      .post(`${API}/facebook/pages`)
+      .set(bearer(account.token))
+      .send({ connectionId, pageId });
+    return connectionId;
+  }
+
+  return { signUp, addMember, startConnect, callback, completeLogin, connectPageFor };
 }

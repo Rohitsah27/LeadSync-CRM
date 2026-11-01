@@ -17,6 +17,8 @@ export default defineConfig({
       // a real client would from one address.
       RATE_LIMIT_MAX: '100000',
       AUTH_RATE_LIMIT_MAX: '1000',
+      // Small, so tests can exercise stopping and resuming a sync with a handful of fake leads.
+      LEAD_SYNC_MAX_REQUESTS_PER_FORM: '2',
       // Fake Meta app. Tests never reach Facebook: tests/helpers/graphMock.js replaces fetch.
       META_APP_ID: '1234567890123456',
       META_APP_SECRET: 'test-app-secret-0123456789abcdef',

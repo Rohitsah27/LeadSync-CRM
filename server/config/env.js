@@ -57,6 +57,9 @@ const schema = z.object({
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
   REFRESH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).optional(),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+  // Each Facebook request returns up to 100 leads, so a sync handles at most 100 x this per form
+  // before it stops and resumes on the next run. This keeps a request short and polite to Meta.
+  LEAD_SYNC_MAX_REQUESTS_PER_FORM: z.coerce.number().int().min(1).max(100).default(10),
   META_APP_ID: numericId.optional(),
   META_APP_SECRET: z.string().min(16, 'looks too short to be an app secret').optional(),
   META_GRAPH_API_VERSION: z
@@ -156,6 +159,7 @@ export function parseEnv(source = process.env) {
       cookieSecure: isProduction,
       rateLimitMax: data.AUTH_RATE_LIMIT_MAX,
     }),
+    leadSync: Object.freeze({ maxRequestsPerForm: data.LEAD_SYNC_MAX_REQUESTS_PER_FORM }),
     meta: metaConfigured
       ? Object.freeze({
           appId: data.META_APP_ID,

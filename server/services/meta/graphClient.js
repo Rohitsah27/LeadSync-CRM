@@ -49,7 +49,8 @@ async function graphRequest({ method = 'GET', path, params = {}, token, appToken
   const url = new URL(`${GRAPH_ORIGIN}/${graphVersion}${path}`);
 
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) url.searchParams.set(key, String(value));
+    // null means "not set" too; String(null) would put the text "null" in the URL.
+    if (value != null) url.searchParams.set(key, String(value));
   }
   if (token) {
     url.searchParams.set('access_token', token);
@@ -197,6 +198,74 @@ export async function getPageDetails(pageId, pageToken) {
     params: { fields: PAGE_DETAIL_FIELDS },
   });
   return normalizePage(body);
+}
+
+const FORM_FIELDS = ['id,name,status,locale,created_time,leads_count,questions', 'id,name,status'];
+const LEAD_FIELDS = ['id,created_time,field_data,form_id,is_organic', 'id,created_time,field_data'];
+const RESULTS_PER_REQUEST = 100;
+
+/**
+ * Reads one result page. If Facebook rejects the field list (code 100), it retries once with a
+ * smaller one rather than failing the whole sync over an optional field.
+ */
+async function readEdge({ path, token, after, fieldSets }) {
+  for (let attempt = 0; attempt < fieldSets.length; attempt += 1) {
+    try {
+      const body = await graphRequest({
+        path,
+        token,
+        params: { fields: fieldSets[attempt], limit: RESULTS_PER_REQUEST, after },
+      });
+      return {
+        items: body.data ?? [],
+        nextCursor: body.paging?.next ? (body.paging.cursors?.after ?? null) : null,
+      };
+    } catch (err) {
+      const canRetry = err instanceof MetaApiError && err.kind === 'invalid_request';
+      if (!canRetry || attempt === fieldSets.length - 1) throw err;
+    }
+  }
+  return { items: [], nextCursor: null };
+}
+
+function normalizeForm(form) {
+  return {
+    formId: String(form.id),
+    name: form.name ?? null,
+    status: form.status ?? null,
+    locale: form.locale ?? null,
+    facebookCreatedTime: form.created_time ? new Date(form.created_time) : null,
+    facebookLeadsCount: Number.isInteger(form.leads_count) ? form.leads_count : null,
+    questions: Array.isArray(form.questions)
+      ? form.questions.slice(0, 100).map((question) => ({
+          key: question.key ?? null,
+          label: question.label ?? null,
+          type: question.type ?? null,
+        }))
+      : [],
+  };
+}
+
+/** One result page of a Page's Lead Ads forms. Needs the Page access token. */
+export async function listLeadForms(pageId, pageToken, { after } = {}) {
+  const { items, nextCursor } = await readEdge({
+    path: `/${encodeURIComponent(pageId)}/leadgen_forms`,
+    token: pageToken,
+    after,
+    fieldSets: FORM_FIELDS,
+  });
+  return { forms: items.filter((form) => form?.id).map(normalizeForm), nextCursor };
+}
+
+/** One result page of a form's leads, newest first, exactly as Facebook returns them. */
+export async function listFormLeads(formId, pageToken, { after } = {}) {
+  const { items, nextCursor } = await readEdge({
+    path: `/${encodeURIComponent(formId)}/leads`,
+    token: pageToken,
+    after,
+    fieldSets: LEAD_FIELDS,
+  });
+  return { leads: items.filter((lead) => lead?.id), nextCursor };
 }
 
 export function revokePermissions(facebookUserId, token) {

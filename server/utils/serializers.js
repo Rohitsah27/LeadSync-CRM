@@ -74,6 +74,46 @@ export function toAvailablePage(page, { connected, inUseElsewhere }) {
   };
 }
 
+export function toPublicForm(form, storedLeads) {
+  return {
+    id: form.id,
+    pageId: form.pageId,
+    formId: form.formId,
+    name: form.name ?? null,
+    status: form.status ?? null,
+    locale: form.locale ?? null,
+    questions: form.questions.map(({ key, label, type }) => ({ key, label, type })),
+    facebookLeadsCount: form.facebookLeadsCount ?? null,
+    storedLeads,
+    syncEnabled: form.syncEnabled,
+    backfillComplete: form.backfillComplete,
+    lastSyncedAt: form.lastSyncedAt ?? null,
+    lastSyncStatus: form.lastSyncStatus ?? null,
+    lastSyncMessage: form.lastSyncMessage ?? null,
+  };
+}
+
+/** A lead as the app shows it. The encrypted original Facebook response is never included. */
+export function toPublicLead(lead) {
+  return {
+    id: lead.id,
+    pageId: lead.pageId,
+    pageName: lead.pageName ?? null,
+    formId: lead.formId,
+    formName: lead.formName ?? null,
+    facebookLeadId: lead.facebookLeadId,
+    fullName: lead.fullName ?? null,
+    email: lead.email ?? null,
+    phone: lead.phone ?? null,
+    customFields: lead.customFields.map(({ key, value }) => ({ key, value })),
+    leadStatus: lead.leadStatus,
+    createdTime: lead.createdTime,
+    source: lead.source,
+    assignedTo: lead.assignedTo ? String(lead.assignedTo) : null,
+    syncedAt: lead.syncedAt ?? null,
+  };
+}
+
 export function toPublicWorkspace(workspace) {
   return {
     id: workspace.id,
