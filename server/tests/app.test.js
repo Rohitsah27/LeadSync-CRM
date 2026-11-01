@@ -10,7 +10,7 @@ describe('health endpoints', () => {
     const res = await request(app).get('/health');
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'ok' });
+    expect(res.body).toMatchObject({ status: 'ok', database: 'disconnected' });
     expect(typeof res.body.uptime).toBe('number');
     expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
     expect(res.headers['x-powered-by']).toBeUndefined();

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -46,6 +47,7 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: '100kb' }));
+  app.use(cookieParser());
 
   app.use('/health', healthRoutes);
   app.use('/api/v1', apiLimiter, apiRoutes);

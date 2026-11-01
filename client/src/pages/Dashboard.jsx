@@ -1,10 +1,16 @@
+import { useAuth } from '../hooks/useAuth.js';
+
 const STATS = ['Total Leads', 'New Leads', 'Contacted Leads', 'Qualified Leads', 'Converted Leads'];
 
 export default function Dashboard() {
+  const { user, workspace } = useAuth();
+
   return (
     <div className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-      <p className="mt-1 text-sm text-slate-500">Lead statistics and recent activity.</p>
+      <p className="mt-1 text-sm text-slate-500">
+        Welcome back, {user.name.split(' ')[0]}. Here is {workspace.name} at a glance.
+      </p>
 
       <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {STATS.map((label) => (

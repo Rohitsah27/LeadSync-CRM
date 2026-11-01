@@ -22,6 +22,14 @@ const originList = z
     return origins;
   });
 
+const mongoUri = z
+  .string({ error: 'is required' })
+  .min(1, 'is required')
+  .refine(
+    (value) => /^mongodb(\+srv)?:\/\//.test(value),
+    'must start with mongodb:// or mongodb+srv://',
+  );
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(5000),
@@ -34,6 +42,13 @@ const schema = z.object({
     .positive()
     .default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  MONGODB_URI: mongoUri,
+  JWT_SECRET: z.string({ error: 'is required' }).min(32, 'must be at least 32 characters'),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+  REFRESH_COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).optional(),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 });
 
 function fail(lines) {
@@ -54,25 +69,43 @@ export function parseEnv(source = process.env) {
 
   const data = result.data;
   const nodeEnv = data.NODE_ENV;
+  const isProduction = nodeEnv === 'production';
+  const problems = [];
 
-  if (
-    nodeEnv === 'production' &&
-    data.FRONTEND_URL.some((origin) => !origin.startsWith('https://'))
-  ) {
-    fail(['FRONTEND_URL: must use https in production']);
+  if (isProduction && data.FRONTEND_URL.some((origin) => !origin.startsWith('https://'))) {
+    problems.push('FRONTEND_URL: must use https in production');
   }
+  if (isProduction && data.BCRYPT_ROUNDS < 10) {
+    problems.push('BCRYPT_ROUNDS: must be at least 10 in production');
+  }
+  if (!isProduction && data.REFRESH_COOKIE_SAMESITE === 'none') {
+    problems.push(
+      'REFRESH_COOKIE_SAMESITE: "none" requires https, so it is only allowed in production',
+    );
+  }
+  if (problems.length) fail(problems);
 
   return Object.freeze({
     nodeEnv,
-    isProduction: nodeEnv === 'production',
+    isProduction,
     isTest: nodeEnv === 'test',
     port: data.PORT,
     frontendOrigins: data.FRONTEND_URL,
     logLevel: data.LOG_LEVEL ?? (nodeEnv === 'test' ? 'silent' : 'info'),
-    trustProxy: data.TRUST_PROXY ?? (nodeEnv === 'production' ? 1 : 0),
+    trustProxy: data.TRUST_PROXY ?? (isProduction ? 1 : 0),
     rateLimit: Object.freeze({
       windowMs: data.RATE_LIMIT_WINDOW_MS,
       max: data.RATE_LIMIT_MAX,
+    }),
+    mongodbUri: data.MONGODB_URI,
+    auth: Object.freeze({
+      jwtSecret: data.JWT_SECRET,
+      accessTokenTtlSeconds: data.ACCESS_TOKEN_TTL_SECONDS,
+      refreshTokenTtlDays: data.REFRESH_TOKEN_TTL_DAYS,
+      bcryptRounds: data.BCRYPT_ROUNDS,
+      cookieSameSite: data.REFRESH_COOKIE_SAMESITE ?? (isProduction ? 'none' : 'lax'),
+      cookieSecure: isProduction,
+      rateLimitMax: data.AUTH_RATE_LIMIT_MAX,
     }),
   });
 }

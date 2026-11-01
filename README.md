@@ -7,7 +7,7 @@ Multi-tenant SaaS that lets businesses connect their own Facebook Pages through 
 | Phase | Scope                                  | Status      |
 | ----- | -------------------------------------- | ----------- |
 | 1     | Project setup and architecture         | Done        |
-| 2     | MongoDB connection and authentication  | Not started |
+| 2     | MongoDB connection and authentication  | Done        |
 | 3     | Workspace and multi-tenant system      | Not started |
 | 4     | Meta OAuth integration                 | Not started |
 | 5     | Facebook Pages integration             | Not started |
@@ -23,7 +23,7 @@ Multi-tenant SaaS that lets businesses connect their own Facebook Pages through 
 - **Server:** Node.js, Express 5, Mongoose (Phase 2), JWT, Meta Graph API
 - **Database:** MongoDB Atlas
 - **Hosting:** Render (static site + web service)
-- **Tests:** Vitest, Supertest, Testing Library
+- **Tests:** Vitest, Supertest, Testing Library (server tests run against an in-memory MongoDB, so no database setup is needed)
 
 ## Getting started
 
@@ -38,6 +38,8 @@ npm run dev
 
 - API: the `PORT` in `server/.env` (health check at `/health`)
 - Web app: the Vite dev server URL printed in the terminal
+
+The API will not start without `MONGODB_URI` (your Atlas connection string, including a database name) and a `JWT_SECRET` of at least 32 characters. The `.env.example` file shows how to generate one.
 
 Real credentials belong only in `server/.env` (or Render's environment settings). `.env` files are gitignored; only `.env.example` files are committed.
 

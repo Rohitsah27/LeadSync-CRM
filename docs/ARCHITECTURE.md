@@ -46,6 +46,16 @@ server/   Express 5 API (ESM)
 - Request logs redact `Authorization`, `Cookie` and `Set-Cookie`.
 - CORS allows only the origins in `FRONTEND_URL`.
 
+## Authentication (Phase 2)
+
+- **Access token:** a JWT (HS256, 15 minutes) that the SPA keeps in memory and sends as a Bearer token. It carries only the user id. The API loads the user from the database on every request, so deactivating an account or changing a password takes effect immediately.
+- **Refresh token:** 48 random bytes in an httpOnly cookie (`ls_refresh`) scoped to `/api/v1/auth`. Only its SHA-256 hash is stored, in the `RefreshToken` collection (with a TTL index that removes expired rows).
+- **Rotation and reuse detection:** every refresh consumes the old token atomically and issues a new one in the same family. Replaying an already-rotated token revokes the whole family. Two tabs refreshing within 10 seconds of each other get a `409` instead, so a normal race does not end the session.
+- **CSRF:** `refresh` and `logout` reject requests whose `Origin` is not in `FRONTEND_URL`. The cookie is `SameSite=Lax` in development and `SameSite=None; Secure` in production, because the Render frontend and API sit on different sites. Phase 10 should revisit this: a shared custom domain or a same-origin proxy would allow `Lax`.
+- **Passwords:** bcrypt (cost 12; at least 10 is enforced in production), 10 to 72 bytes. Sign-in compares against a decoy hash when the email is unknown and returns one error for both failure modes. Registration does reveal whether an email is taken (`409`); this is limited by rate limiting and can be revisited with email verification.
+- **Password change:** revokes every refresh token, rejects access tokens issued before the change, and starts a fresh session for the device that made the change.
+- **Tenancy boundary:** registering creates a `Workspace` and its owner. `req.workspaceId` is set from the authenticated user and never from request input. Phase 3 adds the workspace-scoped query helper, role checks, and cross-tenant isolation tests.
+
 ## Facebook connection flow (Phase 4 onwards)
 
 ```

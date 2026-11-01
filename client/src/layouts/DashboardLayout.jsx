@@ -2,6 +2,7 @@ import {
   ClipboardList,
   Layers,
   LayoutDashboard,
+  LogOut,
   Menu,
   Plug,
   Settings,
@@ -34,7 +35,7 @@ function navLinkClass({ isActive }) {
 
 export default function DashboardLayout() {
   const [navOpen, setNavOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, workspace, signOut } = useAuth();
 
   return (
     <div className="min-h-screen lg:flex">
@@ -90,9 +91,20 @@ export default function DashboardLayout() {
             <Menu className="size-5" />
           </button>
 
-          <div className="ml-auto flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-3 sm:gap-4">
             <ApiStatus />
-            <span className="text-sm font-medium text-slate-700">{user?.name ?? 'Guest'}</span>
+            <div className="hidden text-right leading-tight sm:block">
+              <p className="text-sm font-medium text-slate-700">{user.name}</p>
+              <p className="text-xs text-slate-500">{workspace.name}</p>
+            </div>
+            <button
+              type="button"
+              onClick={signOut}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Sign out
+            </button>
           </div>
         </header>
 

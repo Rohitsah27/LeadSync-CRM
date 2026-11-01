@@ -4,9 +4,16 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.js'],
+    globalSetup: ['./tests/globalSetup.js'],
+    hookTimeout: 60_000,
     env: {
       NODE_ENV: 'test',
       FRONTEND_URL: 'https://app.leadsync.test',
+      // Placeholder only: tests connect to an in-memory MongoDB through tests/helpers/db.js.
+      MONGODB_URI: 'mongodb://127.0.0.1:1/leadsync_unused',
+      JWT_SECRET: 'test-only-secret-that-is-at-least-32-characters-long',
+      BCRYPT_ROUNDS: '4',
+      AUTH_RATE_LIMIT_MAX: '1000',
     },
   },
 });

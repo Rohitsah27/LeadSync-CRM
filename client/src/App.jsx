@@ -1,4 +1,6 @@
 import { Route, Routes } from 'react-router';
+import GuestRoute from './components/GuestRoute.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AuthLayout from './layouts/AuthLayout.jsx';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -16,21 +18,25 @@ import Settings from './pages/Settings.jsx';
 export default function App() {
   return (
     <Routes>
-      <Route element={<AuthLayout />}>
-        <Route path="login" element={<Login />} />
-        <Route path="register" element={<Register />} />
+      <Route element={<GuestRoute />}>
+        <Route element={<AuthLayout />}>
+          <Route path="login" element={<Login />} />
+          <Route path="register" element={<Register />} />
+        </Route>
       </Route>
 
-      <Route element={<DashboardLayout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="connections" element={<FacebookConnections />} />
-        <Route path="pages" element={<FacebookPages />} />
-        <Route path="forms" element={<LeadForms />} />
-        <Route path="leads" element={<Leads />} />
-        <Route path="leads/:leadId" element={<LeadDetails />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="profile" element={<Profile />} />
-        <Route path="*" element={<NotFound />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<DashboardLayout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="connections" element={<FacebookConnections />} />
+          <Route path="pages" element={<FacebookPages />} />
+          <Route path="forms" element={<LeadForms />} />
+          <Route path="leads" element={<Leads />} />
+          <Route path="leads/:leadId" element={<LeadDetails />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
       </Route>
     </Routes>
   );
